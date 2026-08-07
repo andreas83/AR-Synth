@@ -178,6 +178,17 @@ class _GestureScreenState extends State<GestureScreen>
     );
   }
 
+  /// Quarter-turns needed to display the raw (landscape) sensor frame upright
+  /// while the app is locked to portrait. Derived from the camera's sensor
+  /// mount orientation. If the preview ends up upside-down on a given device,
+  /// this is the single knob to adjust (add 2).
+  int _previewQuarterTurns() {
+    final int sensor = _service.sensorOrientation;
+    final int degrees =
+        _service.isFrontCamera ? (360 - sensor) % 360 : sensor % 360;
+    return (degrees ~/ 90) % 4;
+  }
+
   Widget _buildBody(SynthSettings s) {
     final TrackingStatus status = _service.status;
     final CameraController? controller = _service.controller;
@@ -193,25 +204,31 @@ class _GestureScreenState extends State<GestureScreen>
 
     return Stack(
       children: <Widget>[
-        // Camera preview + hand overlay. In portrait the sensor is landscape,
-        // so we invert the aspect ratio to avoid a stretched/sideways preview;
-        // the overlay is a sibling in the same box, so normalized landmark
-        // coordinates line up with what's shown.
+        // Camera preview + hand overlay. The raw sensor frame is landscape, so
+        // in a portrait-locked app it would appear sideways. We rotate the
+        // preview and the overlay TOGETHER (they share the same normalized
+        // sensor space, so they stay aligned) to display upright. The outer
+        // AspectRatio gives a portrait box; RotatedBox swaps the child
+        // constraints back to the sensor's landscape aspect, so nothing is
+        // stretched.
         Positioned.fill(
           child: ColoredBox(
             color: Colors.black,
             child: Center(
               child: AspectRatio(
                 aspectRatio: 1 / controller.value.aspectRatio,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    CameraPreview(controller),
-                    CustomPaint(
-                      painter:
-                          HandOverlayPainter(frame: _frame, output: _output),
-                    ),
-                  ],
+                child: RotatedBox(
+                  quarterTurns: _previewQuarterTurns(),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      controller.buildPreview(),
+                      CustomPaint(
+                        painter: HandOverlayPainter(
+                            frame: _frame, output: _output),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
