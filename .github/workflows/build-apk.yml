@@ -33,18 +33,12 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: "3.32.0"
+          # Must be >= 3.35 (Dart >= 3.9) for camera/hand_landmarker.
+          flutter-version: "3.44.9"
           cache: true
 
       - name: Print toolchain versions
         run: flutter --version
-
-      # This repo does not commit the generated Android Gradle scaffolding
-      # (wrapper, etc.). `flutter create` backfills the missing files without
-      # overwriting the committed AndroidManifest.xml / app build.gradle /
-      # MainActivity.kt.
-      - name: Generate Android platform files
-        run: flutter create --platforms=android .
 
       - name: Install dependencies
         run: flutter pub get
@@ -58,9 +52,9 @@ jobs:
       - name: Build debug APK
         run: flutter build apk --debug
 
-      # Release build succeeds without signing secrets because
-      # android/app/build.gradle maps the release signingConfig to the debug
-      # key. The result is installable but not Play-Store publishable.
+      # Release build succeeds without signing secrets because the release
+      # buildType is signed with the debug key (see android/app/build.gradle.kts).
+      # The result is installable but not Play-Store publishable.
       - name: Build release APK (debug-signed)
         run: flutter build apk --release
 

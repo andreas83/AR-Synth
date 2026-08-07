@@ -64,19 +64,14 @@ test/unit_test.dart         # music theory + gesture geometry unit tests
 
 ## Getting started
 
-Requires **Flutter ≥ 3.32** (stable) and an Android device or emulator with a
-camera for gesture mode.
+Requires **Flutter ≥ 3.35** (stable; Dart ≥ 3.9, needed by `camera` /
+`hand_landmarker`) and an Android device or emulator with a camera for gesture
+mode. The Android project is committed, so no extra scaffolding step is needed.
 
 ```bash
-# 1. Backfill the platform scaffolding this repo doesn't commit
-#    (Gradle wrapper, etc.). This will NOT overwrite the committed
-#    AndroidManifest / build.gradle / MainActivity.
-flutter create --platforms=android .
-
-# 2. Fetch dependencies
 flutter pub get
 
-# 3. Run on a connected Android device/emulator
+# Run on a connected Android device/emulator...
 flutter run
 # ...or build an installable APK:
 flutter build apk --debug
