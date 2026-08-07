@@ -148,6 +148,12 @@ class _GestureScreenState extends State<GestureScreen>
         backgroundColor: Colors.black.withValues(alpha: 0.25),
         title: const Text('Gesture'),
         actions: <Widget>[
+          // Rotate the camera preview to upright (device-dependent; persisted).
+          IconButton(
+            icon: const Icon(Icons.screen_rotation),
+            tooltip: 'Rotate preview',
+            onPressed: settings.rotateCameraPreview,
+          ),
           // Quick gesture-mode switch.
           PopupMenuButton<GestureMode>(
             icon: const Icon(Icons.back_hand),
@@ -176,17 +182,6 @@ class _GestureScreenState extends State<GestureScreen>
       ),
       body: _buildBody(s),
     );
-  }
-
-  /// Quarter-turns needed to display the raw (landscape) sensor frame upright
-  /// while the app is locked to portrait. Derived from the camera's sensor
-  /// mount orientation. If the preview ends up upside-down on a given device,
-  /// this is the single knob to adjust (add 2).
-  int _previewQuarterTurns() {
-    final int sensor = _service.sensorOrientation;
-    final int degrees =
-        _service.isFrontCamera ? (360 - sensor) % 360 : sensor % 360;
-    return (degrees ~/ 90) % 4;
   }
 
   Widget _buildBody(SynthSettings s) {
@@ -218,7 +213,7 @@ class _GestureScreenState extends State<GestureScreen>
               child: AspectRatio(
                 aspectRatio: 1 / controller.value.aspectRatio,
                 child: RotatedBox(
-                  quarterTurns: _previewQuarterTurns(),
+                  quarterTurns: s.cameraQuarterTurns % 4,
                   child: Stack(
                     fit: StackFit.expand,
                     children: <Widget>[

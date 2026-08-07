@@ -97,6 +97,7 @@ class SynthSettings {
     this.thereminScale = 'Pentatonic',
     this.startOctave = 4,
     this.octaves = 2,
+    this.cameraQuarterTurns = 1,
   });
 
   final SoundEngine engine;
@@ -129,6 +130,11 @@ class SynthSettings {
   /// Number of octaves shown on the keyboard.
   final int octaves;
 
+  /// Quarter-turns (0..3) applied to the camera preview + overlay so it shows
+  /// upright in portrait. Device-dependent; the user can cycle it with the
+  /// rotate button on the gesture screen.
+  final int cameraQuarterTurns;
+
   SynthSettings copyWith({
     SoundEngine? engine,
     SynthWave? wave,
@@ -142,6 +148,7 @@ class SynthSettings {
     String? thereminScale,
     int? startOctave,
     int? octaves,
+    int? cameraQuarterTurns,
   }) {
     return SynthSettings(
       engine: engine ?? this.engine,
@@ -156,6 +163,7 @@ class SynthSettings {
       thereminScale: thereminScale ?? this.thereminScale,
       startOctave: startOctave ?? this.startOctave,
       octaves: octaves ?? this.octaves,
+      cameraQuarterTurns: cameraQuarterTurns ?? this.cameraQuarterTurns,
     );
   }
 
@@ -175,6 +183,7 @@ class SynthSettings {
         'thereminScale': thereminScale,
         'startOctave': startOctave,
         'octaves': octaves,
+        'cameraQuarterTurns': cameraQuarterTurns,
       };
 
   factory SynthSettings.fromJson(Map<String, dynamic> json) {
@@ -208,6 +217,7 @@ class SynthSettings {
       thereminScale: json['thereminScale'] as String? ?? 'Pentatonic',
       startOctave: (json['startOctave'] as num?)?.toInt() ?? 4,
       octaves: (json['octaves'] as num?)?.toInt() ?? 2,
+      cameraQuarterTurns: (json['cameraQuarterTurns'] as num?)?.toInt() ?? 1,
     );
   }
 }

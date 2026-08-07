@@ -134,9 +134,10 @@ flutter test        # unit tests for music theory + gesture geometry
 ## Manual test checklist
 
 - [ ] Launch → grant camera permission.
-- [ ] **Gesture Mode** → verify the camera preview is upright (not sideways) and
-      the hand skeleton overlay lines up with your hand; notes play, and the
-      keyboard strip highlights what's sounding.
+- [ ] **Gesture Mode** → if the preview is sideways/upside-down, tap the
+      **rotate** button (app bar) until it's upright — the choice is persisted.
+      Verify the hand skeleton overlay lines up with your hand; notes play, and
+      the keyboard strip highlights what's sounding.
 - [ ] Switch gesture mode from the app-bar hand icon (Air Piano / Poses /
       Theremin) and adjust sensitivity in **Settings**.
 - [ ] Open the **Synth** bottom sheet → toggle **Synth ↔ Piano** engine and
