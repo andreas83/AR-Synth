@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import 'services/audio_engine.dart';
@@ -9,6 +10,12 @@ import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Gesture play + camera preview are designed for portrait; lock to it so the
+  // camera orientation and the hand overlay stay aligned.
+  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
+    DeviceOrientation.portraitUp,
+  ]);
 
   final AudioEngine audio = AudioEngine();
   await audio.init();
