@@ -199,31 +199,33 @@ class _GestureScreenState extends State<GestureScreen>
 
     return Stack(
       children: <Widget>[
-        // Camera preview + hand overlay. The raw sensor frame is landscape, so
-        // in a portrait-locked app it would appear sideways. We rotate the
-        // preview and the overlay TOGETHER (they share the same normalized
-        // sensor space, so they stay aligned) to display upright. The outer
-        // AspectRatio gives a portrait box; RotatedBox swaps the child
-        // constraints back to the sensor's landscape aspect, so nothing is
-        // stretched.
+        // Camera preview + hand overlay.
+        //
+        // IMPORTANT: only the PREVIEW is rotated, never the overlay.
+        // hand_landmarker's detect() rotates the frame by the sensor
+        // orientation *before* running inference, so the landmarks it returns
+        // are already in upright, display-oriented space. The raw preview
+        // texture is not, so it alone needs the rotation to match. Rotating the
+        // overlay too would re-rotate coordinates that are already correct and
+        // knock the skeleton off the hand.
         Positioned.fill(
           child: ColoredBox(
             color: Colors.black,
             child: Center(
               child: AspectRatio(
                 aspectRatio: 1 / controller.value.aspectRatio,
-                child: RotatedBox(
-                  quarterTurns: s.cameraQuarterTurns % 4,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: <Widget>[
-                      controller.buildPreview(),
-                      CustomPaint(
-                        painter: HandOverlayPainter(
-                            frame: _frame, output: _output),
-                      ),
-                    ],
-                  ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    RotatedBox(
+                      quarterTurns: s.cameraQuarterTurns % 4,
+                      child: controller.buildPreview(),
+                    ),
+                    CustomPaint(
+                      painter:
+                          HandOverlayPainter(frame: _frame, output: _output),
+                    ),
+                  ],
                 ),
               ),
             ),
