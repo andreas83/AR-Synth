@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show AssetManifest, rootBundle;
@@ -48,6 +49,18 @@ class AudioEngine {
   bool _reverbActive = false;
   bool _echoActive = false;
 
+  // -- Resonant low-pass filter state --
+  bool _biquadActive = false;
+
+  /// When non-null a live source (pinch gesture) is overriding the cutoff.
+  double? _liveCutoffNorm;
+
+  /// Dart-driven LFO that sweeps the filter cutoff (used instead of a native
+  /// oscillator so it stays version-independent).
+  Timer? _lfoTimer;
+  double _lfoPhase = 0.0;
+  static const Duration _lfoStep = Duration(milliseconds: 30);
+
   bool get hasSamples => _sampleSources.isNotEmpty;
 
   Future<void> init() async {
@@ -58,6 +71,7 @@ class AudioEngine {
       _soloud.setGlobalVolume(_settings.masterVolume);
       await _loadSamples();
       _applyEffects();
+      _applyFilter();
     } catch (e) {
       _initialized = false;
       debugPrint('AudioEngine: SoLoud init failed: $e');
@@ -85,6 +99,14 @@ class AudioEngine {
     if (settings.reverb != previous.reverb || settings.echo != previous.echo) {
       _applyEffects();
     }
+    if (settings.filterEnabled != previous.filterEnabled ||
+        settings.filterCutoff != previous.filterCutoff ||
+        settings.filterResonance != previous.filterResonance ||
+        settings.lfoEnabled != previous.lfoEnabled ||
+        settings.lfoRateHz != previous.lfoRateHz ||
+        settings.lfoDepth != previous.lfoDepth) {
+      _applyFilter();
+    }
   }
 
   /// Sets the output volume live without persisting it (used by theremin mode
@@ -94,6 +116,25 @@ class AudioEngine {
     try {
       _soloud.setGlobalVolume(v.clamp(0.0, 1.0));
     } catch (_) {}
+  }
+
+  /// Live-sets the low-pass cutoff from a normalized 0..1 control (used by the
+  /// pinch-to-modulate gesture). Activates the filter on demand and takes
+  /// precedence over the static cutoff / LFO until [clearLiveCutoff] is called.
+  void setLiveCutoff(double norm01) {
+    _liveCutoffNorm = norm01.clamp(0.0, 1.0);
+    if (!_initialized) return;
+    if (!_ensureBiquad()) return;
+    _writeCutoffHz(_cutoffHz(_liveCutoffNorm!));
+  }
+
+  /// Ends live cutoff control; restores the static cutoff / LFO, or deactivates
+  /// the filter if it isn't otherwise enabled.
+  void clearLiveCutoff() {
+    if (_liveCutoffNorm == null) return;
+    _liveCutoffNorm = null;
+    if (!_initialized) return;
+    _applyFilter();
   }
 
   /// The effective MIDI number after applying the octave shift.
@@ -173,6 +214,7 @@ class AudioEngine {
   }
 
   Future<void> dispose() async {
+    _stopLfo();
     await allNotesOff();
     if (_initialized) {
       try {
@@ -307,6 +349,103 @@ class AudioEngine {
     } catch (e) {
       debugPrint('AudioEngine: echo unavailable on this version: $e');
     }
+  }
+
+  // -- Low-pass filter + LFO --------------------------------------------------
+
+  /// Maps a normalized 0..1 cutoff to Hz on a log curve (~80 Hz .. ~11.2 kHz),
+  /// which feels natural for a filter sweep.
+  static double _cutoffHz(double norm) =>
+      (80.0 * math.pow(140.0, norm.clamp(0.0, 1.0))).toDouble();
+
+  /// Ensures the biquad filter is active and configured. Returns false if the
+  /// filter API is unavailable on this flutter_soloud build.
+  bool _ensureBiquad() {
+    try {
+      final filters = _soloud.filters;
+      if (!_biquadActive) {
+        filters.biquadResonantFilter.activate();
+        _biquadActive = true;
+      }
+      filters.biquadResonantFilter.type.value = 0.0; // 0 == low-pass
+      filters.biquadResonantFilter.resonance.value =
+          0.1 + _settings.filterResonance.clamp(0.0, 1.0) * 19.9;
+      return true;
+    } catch (e) {
+      debugPrint('AudioEngine: biquad filter unavailable: $e');
+      return false;
+    }
+  }
+
+  void _writeCutoffHz(double hz) {
+    try {
+      _soloud.filters.biquadResonantFilter.frequency.value =
+          hz.clamp(10.0, 16000.0);
+    } catch (_) {}
+  }
+
+  /// (Re)configures the filter from the current settings + live-cutoff state.
+  void _applyFilter() {
+    if (!_initialized) return;
+    final bool wantActive =
+        _settings.filterEnabled || _liveCutoffNorm != null;
+
+    if (wantActive) {
+      if (!_ensureBiquad()) return;
+    } else {
+      if (_biquadActive) {
+        try {
+          _soloud.filters.biquadResonantFilter.deactivate();
+        } catch (_) {}
+        _biquadActive = false;
+      }
+      _stopLfo();
+      return;
+    }
+
+    _refreshCutoff();
+    _refreshLfo();
+  }
+
+  /// Writes the current static/live cutoff. The LFO (when running) drives the
+  /// frequency itself, so this only writes when the LFO is not in charge.
+  void _refreshCutoff() {
+    if (!_initialized || !_biquadActive) return;
+    if (_liveCutoffNorm != null) {
+      _writeCutoffHz(_cutoffHz(_liveCutoffNorm!));
+    } else if (!(_settings.lfoEnabled && _settings.lfoDepth > 0.001)) {
+      _writeCutoffHz(_cutoffHz(_settings.filterCutoff));
+    }
+  }
+
+  void _refreshLfo() {
+    final bool wantLfo = _initialized &&
+        _biquadActive &&
+        _settings.lfoEnabled &&
+        _settings.lfoDepth > 0.001;
+    if (wantLfo) {
+      _lfoTimer ??= Timer.periodic(_lfoStep, (_) => _lfoTick());
+    } else {
+      _stopLfo();
+      _refreshCutoff();
+    }
+  }
+
+  void _stopLfo() {
+    _lfoTimer?.cancel();
+    _lfoTimer = null;
+  }
+
+  void _lfoTick() {
+    // Pinch modulation takes precedence over the LFO.
+    if (_liveCutoffNorm != null) return;
+    final double rate = _settings.lfoRateHz.clamp(0.05, 20.0);
+    _lfoPhase += 2 * math.pi * rate * (_lfoStep.inMilliseconds / 1000.0);
+    if (_lfoPhase > 2 * math.pi) _lfoPhase -= 2 * math.pi;
+    final double depth = _settings.lfoDepth.clamp(0.0, 1.0);
+    final double base = _settings.filterCutoff.clamp(0.0, 1.0);
+    final double norm = (base + depth * 0.5 * math.sin(_lfoPhase)).clamp(0.0, 1.0);
+    _writeCutoffHz(_cutoffHz(norm));
   }
 
   static WaveForm _mapWave(SynthWave w) => switch (w) {

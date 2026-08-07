@@ -3,26 +3,42 @@ import 'package:flutter/foundation.dart';
 import '../models/music.dart';
 import '../services/audio_engine.dart';
 import '../services/gesture_mapper.dart';
+import 'arpeggiator.dart';
 import 'settings_controller.dart';
 
 /// Central note router. Both the touch keyboard and the gesture pipeline feed
 /// notes here; it drives the [AudioEngine] and exposes the set of currently
 /// sounding notes for UI highlighting.
 class PianoController extends ChangeNotifier {
-  PianoController(this._audio, this._settings);
+  PianoController(this._audio, this._settings) {
+    _arp = Arpeggiator(
+      audio: _audio,
+      settings: () => _settings.settings,
+      onChange: notifyListeners,
+    );
+  }
 
   final AudioEngine _audio;
   final SettingsController _settings;
+  late final Arpeggiator _arp;
 
   final Set<Note> _touchHeld = <Note>{};
   final Set<Note> _gestureHeld = <Note>{};
   bool _liveVolumeAdjusted = false;
+  bool _cutoffAdjusted = false;
 
-  /// All notes currently sounding (touch ∪ gesture), for keyboard highlighting.
-  Set<Note> get activeNotes => <Note>{..._touchHeld, ..._gestureHeld};
+  /// All notes currently sounding (touch ∪ gesture ∪ arp), for highlighting.
+  Set<Note> get activeNotes {
+    final Set<Note> notes = <Note>{..._touchHeld, ..._gestureHeld};
+    final Note? arpNote = _arp.current;
+    if (arpNote != null) notes.add(arpNote);
+    return notes;
+  }
 
   bool isActive(Note note) =>
-      _touchHeld.contains(note) || _gestureHeld.contains(note);
+      _touchHeld.contains(note) ||
+      _gestureHeld.contains(note) ||
+      _arp.current == note;
 
   // -- Touch input ------------------------------------------------------------
 
@@ -55,14 +71,32 @@ class PianoController extends ChangeNotifier {
   /// updates live volume.
   void applyGesture(GestureOutput output) {
     final Set<Note> next = output.heldNotes;
+    bool changed = false;
 
-    final Set<Note> toOff = _gestureHeld.difference(next);
-    final Set<Note> toOn = next.difference(_gestureHeld);
-    for (final Note n in toOff) {
-      _audio.noteOff(n);
-    }
-    for (final Note n in toOn) {
-      _audio.noteOn(n);
+    if (_settings.settings.arpEnabled) {
+      // The arpeggiator drives note-on/off from the held chord on its own clock.
+      if (_gestureHeld.isNotEmpty) {
+        for (final Note n in _gestureHeld.toList(growable: false)) {
+          _audio.noteOff(n);
+        }
+        _gestureHeld.clear();
+        changed = true;
+      }
+      _arp.setChord(next);
+    } else {
+      _arp.setChord(const <Note>{});
+      final Set<Note> toOff = _gestureHeld.difference(next);
+      final Set<Note> toOn = next.difference(_gestureHeld);
+      for (final Note n in toOff) {
+        _audio.noteOff(n);
+      }
+      for (final Note n in toOn) {
+        _audio.noteOn(n, velocity: output.velocities[n] ?? 1.0);
+      }
+      if (toOff.isNotEmpty || toOn.isNotEmpty) changed = true;
+      _gestureHeld
+        ..clear()
+        ..addAll(next);
     }
 
     // Live volume for theremin mode; restore master when it stops.
@@ -75,20 +109,21 @@ class PianoController extends ChangeNotifier {
       _liveVolumeAdjusted = false;
     }
 
-    if (toOff.isNotEmpty || toOn.isNotEmpty) {
-      _gestureHeld
-        ..clear()
-        ..addAll(next);
-      notifyListeners();
-    } else {
-      _gestureHeld
-        ..clear()
-        ..addAll(next);
+    // Live filter cutoff from the pinch-to-modulate gesture.
+    if (output.pinchModulation != null) {
+      _audio.setLiveCutoff(output.pinchModulation!);
+      _cutoffAdjusted = true;
+    } else if (_cutoffAdjusted) {
+      _audio.clearLiveCutoff();
+      _cutoffAdjusted = false;
     }
+
+    if (changed) notifyListeners();
   }
 
   /// Clears all gesture notes (e.g. when leaving the gesture screen).
   void clearGesture() {
+    _arp.stop();
     if (_gestureHeld.isNotEmpty) {
       for (final Note n in _gestureHeld.toList(growable: false)) {
         _audio.noteOff(n);
@@ -100,10 +135,15 @@ class PianoController extends ChangeNotifier {
       _audio.setLiveMasterVolume(_settings.settings.masterVolume);
       _liveVolumeAdjusted = false;
     }
+    if (_cutoffAdjusted) {
+      _audio.clearLiveCutoff();
+      _cutoffAdjusted = false;
+    }
   }
 
   @override
   void dispose() {
+    _arp.dispose();
     _audio.allNotesOff();
     super.dispose();
   }

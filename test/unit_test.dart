@@ -1,8 +1,13 @@
+import 'dart:math' as math;
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:ar_synth/models/hand_data.dart';
 import 'package:ar_synth/models/music.dart';
+import 'package:ar_synth/models/synth_settings.dart';
 import 'package:ar_synth/services/audio_engine.dart';
+import 'package:ar_synth/services/gesture_mapper.dart';
+import 'package:ar_synth/state/arpeggiator.dart';
 import 'package:ar_synth/utils/finger_geometry.dart';
 
 void main() {
@@ -73,6 +78,88 @@ void main() {
 
     test('all-curled fingers reads as a fist', () {
       expect(classifyPose(_syntheticHand(spread: false)), HandPose.fist);
+    });
+  });
+
+  group('velocity mapping', () {
+    test('clamps to [0.05, 1.0]', () {
+      expect(GestureMapper.speedToVelocity(-1.0), 0.05);
+      expect(GestureMapper.speedToVelocity(0.0), 0.05);
+      expect(GestureMapper.speedToVelocity(100.0), 1.0);
+    });
+
+    test('is monotonic in speed', () {
+      final double slow = GestureMapper.speedToVelocity(0.5);
+      final double fast = GestureMapper.speedToVelocity(1.5);
+      expect(fast, greaterThan(slow));
+    });
+  });
+
+  group('air-piano scale-lock lanes', () {
+    test('default (Major / C) reproduces the white keys', () {
+      const SynthSettings s = SynthSettings();
+      final List<Note> lanes = GestureMapper.airPianoLanes(s);
+      final List<Note> whites =
+          whiteKeysOf(buildKeyboard(startOctave: 4, octaves: 2));
+      expect(lanes.length, whites.length);
+      expect(lanes.map((Note n) => n.midi).toList(),
+          whites.map((Note n) => n.midi).toList());
+      expect(lanes.first.name, 'C4');
+    });
+
+    test('a non-zero key root shifts the scale (D major)', () {
+      const SynthSettings s = SynthSettings(scaleName: 'Major', keyRoot: 2);
+      final List<Note> lanes = GestureMapper.airPianoLanes(s);
+      const Set<int> dMajorPitchClasses = <int>{1, 2, 4, 6, 7, 9, 11};
+      expect(lanes, isNotEmpty);
+      for (final Note n in lanes) {
+        expect(dMajorPitchClasses.contains(n.pitchClass), isTrue,
+            reason: '${n.name} should be in D major');
+      }
+      expect(lanes.first.name, 'C#4');
+    });
+  });
+
+  group('arpeggiator helpers', () {
+    test('step duration follows tempo + note division', () {
+      expect(arpStepDuration(120, ArpRate.quarter).inMilliseconds, 500);
+      expect(arpStepDuration(120, ArpRate.eighth).inMilliseconds, 250);
+      expect(arpStepDuration(120, ArpRate.sixteenth).inMilliseconds, 125);
+    });
+
+    test('up/down index bounces between endpoints without repeats', () {
+      final List<int> seq =
+          List<int>.generate(8, (int i) => arpUpDownIndex(i, 3));
+      expect(seq, <int>[0, 1, 2, 1, 0, 1, 2, 1]);
+      expect(arpUpDownIndex(5, 1), 0); // single note is always index 0
+    });
+
+    test('pattern indices for up and down', () {
+      final math.Random rng = math.Random(0);
+      final List<int> up = List<int>.generate(
+          6, (int i) => arpPatternIndex(ArpPattern.up, i, 3, rng));
+      final List<int> down = List<int>.generate(
+          6, (int i) => arpPatternIndex(ArpPattern.down, i, 3, rng));
+      expect(up, <int>[0, 1, 2, 0, 1, 2]);
+      expect(down, <int>[2, 1, 0, 2, 1, 0]);
+    });
+
+    test('random stays within chord bounds', () {
+      final math.Random rng = math.Random(42);
+      for (int i = 0; i < 50; i++) {
+        final int idx = arpPatternIndex(ArpPattern.random, i, 4, rng);
+        expect(idx, inInclusiveRange(0, 3));
+      }
+    });
+  });
+
+  group('filter cutoff mapping', () {
+    test('normalized cutoff stays within the audible/biquad range', () {
+      // AudioEngine maps 0..1 -> ~80..11200 Hz on a log curve.
+      double hz(double norm) => 80.0 * math.pow(140.0, norm).toDouble();
+      expect(hz(0.0), closeTo(80.0, 1e-6));
+      expect(hz(1.0), lessThan(16000.0));
+      expect(hz(1.0), greaterThan(hz(0.5)));
     });
   });
 }
