@@ -1,5 +1,7 @@
 # AR Synth 🎹👋
 
+[![Build APK](https://github.com/andreas83/AR-Synth/actions/workflows/build-apk.yml/badge.svg)](https://github.com/andreas83/AR-Synth/actions/workflows/build-apk.yml)
+
 Play a virtual piano and synthesizer **in the air** — a Flutter app that tracks
 your hands through the camera (MediaPipe Hand Landmarker) and turns your
 gestures into music, alongside a classic on-screen touch keyboard.
