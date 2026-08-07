@@ -1,0 +1,43 @@
+name: ar_synth
+description: "Camera hand-gesture virtual piano and synthesizer built with Flutter."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+  flutter: ">=3.32.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Audio engine: low-latency oscillator synthesis + sample playback (FFI/SoLoud).
+  flutter_soloud: ^2.1.0
+
+  # Camera preview + image stream (feeds the hand tracker).
+  camera: ^0.11.0
+
+  # MediaPipe Hand Landmarker (Android, native JNI bridge, model bundled).
+  hand_landmarker: ^2.1.2
+
+  # Runtime permissions (camera).
+  permission_handler: ^11.3.1
+
+  # Simple state management.
+  provider: ^6.1.2
+
+  # Persist user settings.
+  shared_preferences: ^2.3.2
+
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/samples/
