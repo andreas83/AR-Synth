@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../models/hand_data.dart';
 import '../models/music.dart';
@@ -15,10 +16,12 @@ import '../theme.dart';
 import '../utils/finger_geometry.dart';
 import '../widgets/hand_overlay.dart';
 import '../widgets/piano_keyboard.dart';
+import '../widgets/synth_controls.dart';
 
 /// Camera hand-gesture instrument. Streams frames through the hand tracker,
 /// maps them to notes via [GestureMapper], and plays them through the
-/// [PianoController]. Android only.
+/// [PianoController]. Synth controls live in a bottom sheet on this screen.
+/// Android only.
 class GestureScreen extends StatefulWidget {
   const GestureScreen({super.key});
 
@@ -57,7 +60,11 @@ class _GestureScreenState extends State<GestureScreen>
 
   Future<void> _start() async {
     setState(() => _starting = true);
-    await _service.start();
+    final bool ok = await _service.start();
+    // Keep the screen awake while the camera instrument is running.
+    if (ok) {
+      WakelockPlus.enable();
+    }
     if (mounted) setState(() => _starting = false);
   }
 
@@ -81,6 +88,7 @@ class _GestureScreenState extends State<GestureScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
+      WakelockPlus.disable();
       _service.stop();
       _piano?.clearGesture();
     } else if (state == AppLifecycleState.resumed && mounted) {
@@ -91,10 +99,42 @@ class _GestureScreenState extends State<GestureScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    WakelockPlus.disable();
     _sub?.cancel();
     _service.dispose();
     _piano?.clearGesture();
     super.dispose();
+  }
+
+  void _openSynthSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext sheetContext) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.62,
+          minChildSize: 0.35,
+          maxChildSize: 0.92,
+          builder: (BuildContext context, ScrollController scrollController) {
+            return SingleChildScrollView(
+              controller: scrollController,
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  _SheetHandle(),
+                  SynthControls(),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -103,8 +143,36 @@ class _GestureScreenState extends State<GestureScreen>
     final SynthSettings s = settings.settings;
 
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text('Gesture · ${s.gestureMode.label}'),
+        backgroundColor: Colors.black.withValues(alpha: 0.25),
+        title: const Text('Gesture'),
+        actions: <Widget>[
+          // Quick gesture-mode switch.
+          PopupMenuButton<GestureMode>(
+            icon: const Icon(Icons.back_hand),
+            tooltip: 'Gesture mode: ${s.gestureMode.label}',
+            initialValue: s.gestureMode,
+            onSelected: settings.setGestureMode,
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<GestureMode>>[
+              for (final GestureMode mode in GestureMode.values)
+                PopupMenuItem<GestureMode>(
+                  value: mode,
+                  child: Text(mode.label),
+                ),
+            ],
+          ),
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Synth controls',
+            onPressed: _openSynthSheet,
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _openSynthSheet,
+        icon: const Icon(Icons.graphic_eq),
+        label: const Text('Synth'),
       ),
       body: _buildBody(s),
     );
@@ -117,32 +185,41 @@ class _GestureScreenState extends State<GestureScreen>
     if (_starting) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (status != TrackingStatus.running || controller == null) {
+    if (status != TrackingStatus.running ||
+        controller == null ||
+        !controller.value.isInitialized) {
       return _buildUnavailable(status);
     }
 
     return Stack(
       children: <Widget>[
-        // Camera preview + hand overlay, aligned within the same box.
+        // Camera preview + hand overlay. In portrait the sensor is landscape,
+        // so we invert the aspect ratio to avoid a stretched/sideways preview;
+        // the overlay is a sibling in the same box, so normalized landmark
+        // coordinates line up with what's shown.
         Positioned.fill(
-          child: Center(
-            child: AspectRatio(
-              aspectRatio: controller.value.aspectRatio,
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  CameraPreview(controller),
-                  CustomPaint(
-                    painter: HandOverlayPainter(frame: _frame, output: _output),
-                  ),
-                ],
+          child: ColoredBox(
+            color: Colors.black,
+            child: Center(
+              child: AspectRatio(
+                aspectRatio: 1 / controller.value.aspectRatio,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    CameraPreview(controller),
+                    CustomPaint(
+                      painter:
+                          HandOverlayPainter(frame: _frame, output: _output),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
         // Status chips.
         Positioned(
-          top: 12,
+          top: kToolbarHeight + 28,
           left: 12,
           right: 12,
           child: _StatusBar(frame: _frame, output: _output, settings: s),
@@ -155,7 +232,7 @@ class _GestureScreenState extends State<GestureScreen>
           child: SafeArea(
             top: false,
             child: SizedBox(
-              height: 120,
+              height: 96,
               child: PianoKeyboard(
                 notes: buildKeyboard(
                     startOctave: s.startOctave, octaves: s.octaves),
@@ -178,8 +255,7 @@ class _GestureScreenState extends State<GestureScreen>
         ),
       TrackingStatus.unsupported => (
           Icons.phonelink_erase,
-          'Hand tracking is only available on Android. '
-              'Use the Touch Piano on this platform.'
+          'Hand tracking is only available on Android.'
         ),
       _ => (
           Icons.error_outline,
@@ -208,6 +284,25 @@ class _GestureScreenState extends State<GestureScreen>
   }
 }
 
+class _SheetHandle extends StatelessWidget {
+  const _SheetHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.only(top: 10, bottom: 4),
+        width: 42,
+        height: 4,
+        decoration: BoxDecoration(
+          color: Colors.white24,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
 class _StatusBar extends StatelessWidget {
   const _StatusBar(
       {required this.frame, required this.output, required this.settings});
@@ -219,6 +314,7 @@ class _StatusBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<String> chips = <String>[
+      settings.gestureMode.label,
       '${frame.hands.length} hand${frame.hands.length == 1 ? '' : 's'}',
     ];
     if (settings.gestureMode == GestureMode.discretePoses) {
@@ -237,6 +333,7 @@ class _StatusBar extends StatelessWidget {
         for (final String c in chips)
           Chip(
             label: Text(c),
+            visualDensity: VisualDensity.compact,
             backgroundColor: AppTheme.surface.withValues(alpha: 0.8),
             side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.4)),
           ),

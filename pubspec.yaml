@@ -4,8 +4,10 @@ publish_to: "none"
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.5.0 <4.0.0"
-  flutter: ">=3.32.0"
+  # camera 0.11.3+ (pulled in by hand_landmarker) requires Dart >= 3.9,
+  # which ships with Flutter >= 3.35.
+  sdk: ">=3.9.0 <4.0.0"
+  flutter: ">=3.35.0"
 
 dependencies:
   flutter:
@@ -28,6 +30,9 @@ dependencies:
 
   # Persist user settings.
   shared_preferences: ^2.3.2
+
+  # Keep the screen awake while playing.
+  wakelock_plus: ^1.2.8
 
   cupertino_icons: ^1.0.8
 

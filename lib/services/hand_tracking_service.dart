@@ -159,9 +159,12 @@ class HandTrackingService {
     for (final hlm.Hand h in raw) {
       final List<hlm.Landmark> lms = h.landmarks;
       if (lms.length != 21) continue;
+      // Use the landmark coordinates as MediaPipe reports them (relative to the
+      // upright, display-oriented image). CameraPreview shows the same
+      // (un-mirrored) frames, so no x-flip is applied here — flipping would
+      // misalign the overlay with the preview.
       final List<HandLandmark> converted = <HandLandmark>[
-        for (final hlm.Landmark p in lms)
-          HandLandmark(_mirror ? 1.0 - p.x : p.x, p.y, p.z),
+        for (final hlm.Landmark p in lms) HandLandmark(p.x, p.y, p.z),
       ];
       hands.add(Hand(landmarks: converted, isRight: _guessRight(converted)));
     }

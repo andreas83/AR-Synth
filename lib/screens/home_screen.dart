@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 import 'gesture_screen.dart';
-import 'piano_screen.dart';
 import 'settings_screen.dart';
 
 /// Landing screen with navigation to the three main experiences.
@@ -40,16 +39,6 @@ class HomeScreen extends StatelessWidget {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                       builder: (_) => const GestureScreen()),
-                ),
-              ),
-              const SizedBox(height: 16),
-              _NavCard(
-                icon: Icons.piano,
-                title: 'Touch Piano',
-                subtitle: 'On-screen keyboard + synth',
-                color: AppTheme.primary,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(builder: (_) => const PianoScreen()),
                 ),
               ),
               const SizedBox(height: 16),

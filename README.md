@@ -4,11 +4,12 @@
 
 Play a virtual piano and synthesizer **in the air** — a Flutter app that tracks
 your hands through the camera (MediaPipe Hand Landmarker) and turns your
-gestures into music, alongside a classic on-screen touch keyboard.
+gestures into music.
 
 > **Platform:** Android-first. The camera hand-tracking runs on Android (native
-> MediaPipe via JNI). The **Touch Piano** and **synth** work on every Flutter
-> platform; gesture mode shows a friendly "Android only" notice elsewhere.
+> MediaPipe via JNI); on other platforms gesture mode shows a friendly
+> "Android only" notice. The screen is kept awake while playing, and the app
+> runs in portrait.
 
 ---
 
@@ -25,7 +26,9 @@ gestures into music, alongside a classic on-screen touch keyboard.
   - **Synth** — real-time oscillators (sine / square / saw / triangle) with a
     full **ADSR** envelope and **reverb / echo** effects (via `flutter_soloud`).
   - **Piano** — pitch-shifted piano **samples** (bundled; see below).
-- **Touch piano** — a responsive multi-touch keyboard that works everywhere.
+- **Synth controls in-context** — a drag-up **bottom sheet** on the gesture
+  screen exposes engine, waveform, ADSR, effects and octave without leaving the
+  camera; a keyboard strip highlights the notes you're playing.
 - **Live, persisted settings** — engine, waveform, ADSR, octave shift, effects,
   gesture mode & sensitivity, keyboard range, theremin scale.
 
@@ -64,19 +67,14 @@ test/unit_test.dart         # music theory + gesture geometry unit tests
 
 ## Getting started
 
-Requires **Flutter ≥ 3.32** (stable) and an Android device or emulator with a
-camera for gesture mode.
+Requires **Flutter ≥ 3.35** (stable; Dart ≥ 3.9, needed by `camera` /
+`hand_landmarker`) and an Android device or emulator with a camera for gesture
+mode. The Android project is committed, so no extra scaffolding step is needed.
 
 ```bash
-# 1. Backfill the platform scaffolding this repo doesn't commit
-#    (Gradle wrapper, etc.). This will NOT overwrite the committed
-#    AndroidManifest / build.gradle / MainActivity.
-flutter create --platforms=android .
-
-# 2. Fetch dependencies
 flutter pub get
 
-# 3. Run on a connected Android device/emulator
+# Run on a connected Android device/emulator...
 flutter run
 # ...or build an installable APK:
 flutter build apk --debug
@@ -136,12 +134,15 @@ flutter test        # unit tests for music theory + gesture geometry
 ## Manual test checklist
 
 - [ ] Launch → grant camera permission.
-- [ ] **Settings** → try each gesture mode and adjust sensitivity.
-- [ ] **Gesture Mode** → verify the hand skeleton overlay tracks your hand and
-      notes play; watch the keyboard strip highlight what's sounding.
-- [ ] Toggle **Synth ↔ Piano** engine and confirm the timbre changes.
-- [ ] Adjust **waveform / ADSR / reverb / echo / octave** and hear the effect.
-- [ ] **Touch Piano** → play chords with multiple fingers.
+- [ ] **Gesture Mode** → verify the camera preview is upright (not sideways) and
+      the hand skeleton overlay lines up with your hand; notes play, and the
+      keyboard strip highlights what's sounding.
+- [ ] Switch gesture mode from the app-bar hand icon (Air Piano / Poses /
+      Theremin) and adjust sensitivity in **Settings**.
+- [ ] Open the **Synth** bottom sheet → toggle **Synth ↔ Piano** engine and
+      confirm the timbre changes; adjust **waveform / ADSR / reverb / echo /
+      octave** and hear the effect.
+- [ ] Confirm the **screen stays awake** while the gesture screen is open.
 
 ## Known limitations
 
