@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ar_synth/models/hand_data.dart';
 import 'package:ar_synth/models/music.dart';
 import 'package:ar_synth/services/audio_engine.dart';
+import 'package:ar_synth/services/update_service.dart';
 import 'package:ar_synth/utils/finger_geometry.dart';
 
 void main() {
@@ -63,6 +64,32 @@ void main() {
     test('returns null on garbage', () {
       expect(noteNameToMidi('hello'), isNull);
       expect(noteNameToMidi(''), isNull);
+    });
+  });
+
+  group('update version comparison', () {
+    test('normalizes release tags', () {
+      expect(normalizeVersion('v1.0.42'), '1.0.42');
+      expect(normalizeVersion('1.2.3'), '1.2.3');
+      expect(normalizeVersion('AR Synth 1.0.7'), '1.0.7');
+      expect(normalizeVersion('nightly'), '');
+    });
+
+    test('detects a newer build', () {
+      expect(isNewer('1.0.43', '1.0.42'), isTrue);
+      expect(isNewer('1.1.0', '1.0.99'), isTrue);
+      expect(isNewer('2.0.0', '1.9.9'), isTrue);
+    });
+
+    test('does not offer same or older builds', () {
+      expect(isNewer('1.0.42', '1.0.42'), isFalse);
+      expect(isNewer('1.0.41', '1.0.42'), isFalse);
+      expect(isNewer('0.9.9', '1.0.0'), isFalse);
+    });
+
+    test('handles differing component counts', () {
+      expect(isNewer('1.0.1', '1.0'), isTrue);
+      expect(isNewer('1.0', '1.0.0'), isFalse);
     });
   });
 

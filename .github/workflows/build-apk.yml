@@ -14,6 +14,9 @@ concurrency:
   group: build-apk-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write # needed to publish releases
+
 jobs:
   build:
     name: Build Android APK
@@ -40,6 +43,12 @@ jobs:
       - name: Print toolchain versions
         run: flutter --version
 
+      # Version every build off the run number so the in-app updater can tell
+      # builds apart: 1.0.<run_number>.
+      - name: Compute version
+        id: version
+        run: echo "name=1.0.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
       - name: Install dependencies
         run: flutter pub get
 
@@ -52,11 +61,19 @@ jobs:
       - name: Build debug APK
         run: flutter build apk --debug
 
-      # Release build succeeds without signing secrets because the release
-      # buildType is signed with the debug key (see android/app/build.gradle.kts).
-      # The result is installable but not Play-Store publishable.
-      - name: Build release APK (debug-signed)
-        run: flutter build apk --release
+      # Signed with the committed shared keystore (android/app/arsynth-shared.jks)
+      # so every build has the same signature and updates install over each other.
+      - name: Build release APK
+        run: |
+          flutter build apk --release \
+            --build-name=${{ steps.version.outputs.name }} \
+            --build-number=${{ github.run_number }}
+
+      - name: Rename release APK
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             dist/ar-synth-${{ steps.version.outputs.name }}.apk
 
       - name: Upload APKs
         uses: actions/upload-artifact@v4
@@ -65,4 +82,19 @@ jobs:
           if-no-files-found: error
           path: |
             build/app/outputs/flutter-apk/app-debug.apk
-            build/app/outputs/flutter-apk/app-release.apk
+            dist/ar-synth-${{ steps.version.outputs.name }}.apk
+
+      # Publish a Release on the default branch only. The in-app updater polls
+      # /releases/latest, so this is what makes updates reach the device.
+      - name: Publish GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.name }}
+          name: AR Synth ${{ steps.version.outputs.name }}
+          body: |
+            Automated build from `${{ github.sha }}`.
+
+            ${{ github.event.head_commit.message }}
+          files: dist/ar-synth-${{ steps.version.outputs.name }}.apk
+          make_latest: true

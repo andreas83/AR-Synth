@@ -26,11 +26,25 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        // A fixed, intentionally-shared key committed to the repo so that every
+        // CI build carries the SAME signature — Android only allows an update to
+        // install over an existing app when the signatures match.
+        //
+        // This is NOT a production key: the password is public. Never publish
+        // this app to the Play Store with it; generate a private keystore and
+        // load it from CI secrets instead.
+        create("shared") {
+            storeFile = file("arsynth-shared.jks")
+            storePassword = "arsynth"
+            keyAlias = "arsynth"
+            keyPassword = "arsynth"
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("shared")
         }
     }
 }

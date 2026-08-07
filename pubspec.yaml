@@ -35,6 +35,10 @@ dependencies:
   wakelock_plus: ^1.2.8
 
   cupertino_icons: ^1.0.8
+  http: ^1.6.0
+  package_info_plus: ^10.2.1
+  path_provider: ^2.1.6
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:

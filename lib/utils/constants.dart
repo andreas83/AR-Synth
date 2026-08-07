@@ -10,6 +10,10 @@ class AppSizes {
 /// Persisted-settings storage key.
 const String kSettingsPrefsKey = 'ar_synth.settings.v1';
 
+/// GitHub repository that hosts the releases the in-app updater checks.
+const String kGithubOwner = 'andreas83';
+const String kGithubRepo = 'AR-Synth';
+
 /// Colors reused across the fingertip overlay / keyboard highlights.
 /// Index-aligned with the five fingers (thumb .. pinky).
 const List<Color> kFingerColors = <Color>[

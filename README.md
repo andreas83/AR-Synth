@@ -82,6 +82,36 @@ flutter build apk --debug
 
 Grant the **camera permission** when prompted, then open **Gesture Mode**.
 
+## Installing & auto-updating on your phone
+
+You don't need to download CI artifacts by hand. Every push to `main`:
+
+1. builds a release APK versioned `1.0.<run number>`,
+2. publishes it as a **GitHub Release** tagged `v1.0.<run number>`, marked
+   *latest*, with the APK attached.
+
+**First install:** grab the APK from the
+[latest release](https://github.com/andreas83/AR-Synth/releases/latest) and
+install it (allow "install unknown apps" for your browser/file manager).
+
+**After that it updates itself.** On launch the app queries the GitHub Releases
+API; if a newer version exists it offers to download and install it, showing
+progress. You can also trigger a check from the version line at the bottom of
+the home screen. Android will ask you to allow AR Synth to *install unknown
+apps* the first time — that's the `REQUEST_INSTALL_PACKAGES` permission.
+
+> ⚠️ **About the signing key.** Android only lets an update install over an
+> existing app when both are signed with the **same** key. CI's auto-generated
+> debug key differs on every run, so this repo commits a fixed keystore
+> (`android/app/arsynth-shared.jks`, password `arsynth`) and signs release
+> builds with it. **Its password is public — this is a convenience key for a
+> personal side-project, not a production one.** If you ever publish to the Play
+> Store, generate a private keystore, keep it in GitHub Secrets, and swap the
+> `shared` signing config in `android/app/build.gradle.kts`.
+
+Pointing the updater at a different repo: change `kGithubOwner` / `kGithubRepo`
+in `lib/utils/constants.dart`.
+
 ## Piano samples
 
 The repo ships with small, **CC0, self-generated** anchor samples
