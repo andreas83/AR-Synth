@@ -1,0 +1,3 @@
+# Piano samples are placed here. See scripts/fetch_samples.sh and README.md.
+# The audio engine automatically falls back to the built-in synth if no
+# samples are present, so the app runs even when this folder is empty.

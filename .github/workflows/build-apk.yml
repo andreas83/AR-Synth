@@ -1,0 +1,74 @@
+name: Build APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "claude/**"
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref.
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: "3.32.0"
+          cache: true
+
+      - name: Print toolchain versions
+        run: flutter --version
+
+      # This repo does not commit the generated Android Gradle scaffolding
+      # (wrapper, etc.). `flutter create` backfills the missing files without
+      # overwriting the committed AndroidManifest.xml / app build.gradle /
+      # MainActivity.kt.
+      - name: Generate Android platform files
+        run: flutter create --platforms=android .
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Build debug APK
+        run: flutter build apk --debug
+
+      # Release build succeeds without signing secrets because
+      # android/app/build.gradle maps the release signingConfig to the debug
+      # key. The result is installable but not Play-Store publishable.
+      - name: Build release APK (debug-signed)
+        run: flutter build apk --release
+
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ar-synth-apks
+          if-no-files-found: error
+          path: |
+            build/app/outputs/flutter-apk/app-debug.apk
+            build/app/outputs/flutter-apk/app-release.apk
