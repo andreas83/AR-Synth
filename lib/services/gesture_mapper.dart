@@ -1,8 +1,27 @@
+import 'dart:math' as math;
+
 import '../models/face_data.dart';
 import '../models/hand_data.dart';
 import '../models/music.dart';
 import '../models/synth_settings.dart';
 import '../utils/finger_geometry.dart';
+
+/// One tone field of a handpan: a [Note] and its normalized (0..1) center in
+/// landmark space, so it lines up with fingertips and can be drawn on the
+/// overlay via the same transform. [isDing] marks the deep central note.
+class HandpanField {
+  const HandpanField({
+    required this.note,
+    required this.x,
+    required this.y,
+    required this.isDing,
+  });
+
+  final Note note;
+  final double x;
+  final double y;
+  final bool isDing;
+}
 
 /// A fingertip cursor to visualise on top of the camera preview.
 class FingerCursor {
@@ -35,6 +54,7 @@ class GestureOutput {
     this.velocities = const <Note, double>{},
     this.cursors = const <FingerCursor>[],
     this.poses = const <HandPose>[],
+    this.fields = const <HandpanField>[],
     this.thereminVolume,
     this.pinchModulation,
     this.pressLineY,
@@ -59,6 +79,9 @@ class GestureOutput {
 
   /// Recognised poses per hand (discrete mode), for on-screen feedback.
   final List<HandPose> poses;
+
+  /// Handpan tone-field layout to draw (handpan mode); empty otherwise.
+  final List<HandpanField> fields;
 
   /// Live output volume 0..1 for theremin mode (null otherwise).
   final double? thereminVolume;
@@ -87,6 +110,12 @@ class GestureMapper {
       List<List<double?>>.generate(2, (_) => List<double?>.filled(5, null));
   int? _prevMicros;
 
+  // Handpan strike edge-detection: the tone-field index each fingertip was
+  // inside last frame (-1 == none), so entering a field triggers exactly one
+  // strike per [handSlot][finger].
+  final List<List<int>> _prevField =
+      List<List<int>>.generate(2, (_) => List<int>.filled(5, -1));
+
   void reset() {
     for (int i = 0; i < _stablePose.length; i++) {
       _stablePose[i] = HandPose.none;
@@ -95,6 +124,11 @@ class GestureMapper {
     for (final List<double?> row in _prevTipY) {
       for (int i = 0; i < row.length; i++) {
         row[i] = null;
+      }
+    }
+    for (final List<int> row in _prevField) {
+      for (int i = 0; i < row.length; i++) {
+        row[i] = -1;
       }
     }
     _prevMicros = null;
@@ -124,6 +158,61 @@ class GestureMapper {
         .toList(growable: false);
   }
 
+  /// The MIDI number of the handpan's central Ding for [settings]. Anchored an
+  /// octave below the keyboard base so the pan sits in a mellow register, then
+  /// transposed by the chosen key root. Pure + testable.
+  static int handpanDingMidi(SynthSettings settings) {
+    final int root = ((settings.keyRoot % 12) + 12) % 12;
+    return (settings.startOctave + 1) * 12 + root - 12;
+  }
+
+  /// The handpan tone fields for [settings]: the Ding at the center plus the
+  /// ring notes spaced evenly around it, ascending from the bottom of the pan
+  /// (a simplified but faithful "tone circle"). Pure + testable.
+  static List<HandpanField> handpanFields(SynthSettings settings) {
+    final List<int> tuning =
+        kHandpanTunings[settings.handpanTuning] ?? kHandpanTunings.values.first;
+    if (tuning.isEmpty) return const <HandpanField>[];
+    final int ding = handpanDingMidi(settings);
+
+    final List<HandpanField> out = <HandpanField>[
+      HandpanField(note: Note(ding), x: 0.5, y: 0.5, isDing: true),
+    ];
+    final int ring = tuning.length - 1;
+    for (int i = 0; i < ring; i++) {
+      // Start at the bottom (angle = pi/2, since y grows downward) and step
+      // evenly around the ring so pitch ascends around the pan.
+      final double angle = math.pi / 2 + 2 * math.pi * (i / ring);
+      out.add(HandpanField(
+        note: Note(ding + tuning[i + 1]),
+        x: 0.5 + 0.32 * math.cos(angle),
+        y: 0.5 + 0.36 * math.sin(angle),
+        isDing: false,
+      ));
+    }
+    return out;
+  }
+
+  /// Index of the first field whose center is within the strike radius of
+  /// ([x], [y]) in normalized landmark space, or -1 if the fingertip is off the
+  /// pan. Picks the nearest when fields overlap. Pure + testable.
+  static int handpanFieldAt(List<HandpanField> fields, double x, double y) {
+    const double radius = 0.14;
+    const double radiusSq = radius * radius;
+    int best = -1;
+    double bestSq = radiusSq;
+    for (int i = 0; i < fields.length; i++) {
+      final double dx = x - fields[i].x;
+      final double dy = y - fields[i].y;
+      final double d = dx * dx + dy * dy;
+      if (d < bestSq) {
+        best = i;
+        bestSq = d;
+      }
+    }
+    return best;
+  }
+
   /// Detected hands sorted left→right for stable per-slot state.
   static List<Hand> _sortedHands(HandFrame frame) =>
       List<Hand>.of(frame.hands)
@@ -138,6 +227,7 @@ class GestureMapper {
       GestureMode.airPiano => _mapAirPiano(frame, settings),
       GestureMode.discretePoses => _mapDiscrete(frame, settings),
       GestureMode.theremin => _mapTheremin(frame, settings),
+      GestureMode.handpan => _mapHandpan(frame, settings),
       // Face mode is driven by the face stream, not hand frames.
       GestureMode.face => GestureOutput.empty,
     };
@@ -353,6 +443,72 @@ class GestureMapper {
         if (volumeHandY != null)
           FingerCursor(x: hands.first[kWrist].x, y: volumeHandY, colorIndex: 3),
       ],
+    );
+  }
+
+  // -- Handpan ----------------------------------------------------------------
+
+  GestureOutput _mapHandpan(HandFrame frame, SynthSettings settings) {
+    final List<HandpanField> fields = handpanFields(settings);
+    if (fields.isEmpty) return GestureOutput.empty;
+
+    final Set<Note> touched = <Note>{};
+    // Notes freshly struck this frame, keyed with an attack velocity so the
+    // controller can fire one-shot strikes (never a note-off).
+    final Map<Note, double> velocities = <Note, double>{};
+    final List<FingerCursor> cursors = <FingerCursor>[];
+
+    final List<Hand> hands = _sortedHands(frame);
+    final int nowMicros = DateTime.now().microsecondsSinceEpoch;
+    final double dt =
+        _prevMicros == null ? 0.0 : (nowMicros - _prevMicros!) / 1e6;
+
+    for (int slot = 0; slot < hands.length && slot < 2; slot++) {
+      final Hand hand = hands[slot];
+      if (!hand.isValid) continue;
+      // Index, middle, ring, pinky are the "mallets"; the thumb is skipped.
+      for (int finger = 1; finger < 5; finger++) {
+        if (!FingerGeometry.isFingerExtended(hand, finger)) {
+          _prevTipY[slot][finger] = null;
+          _prevField[slot][finger] = -1;
+          continue;
+        }
+        final HandLandmark tip = FingerGeometry.tip(hand, finger);
+        final int idx = handpanFieldAt(fields, tip.x, tip.y);
+        final Note? overNote = idx >= 0 ? fields[idx].note : null;
+
+        if (idx >= 0) {
+          touched.add(fields[idx].note);
+          // Edge trigger: strike only when a fingertip enters a new field.
+          if (idx != _prevField[slot][finger]) {
+            double v = 0.8; // no prior sample: a medium tap
+            final double? prevY = _prevTipY[slot][finger];
+            if (settings.velocityEnabled && dt > 0 && prevY != null) {
+              v = speedToVelocity((tip.y - prevY) / dt);
+            }
+            velocities[fields[idx].note] = v;
+          }
+        }
+
+        cursors.add(FingerCursor(
+          x: tip.x,
+          y: tip.y,
+          colorIndex: finger,
+          note: overNote,
+          pressing: idx >= 0,
+        ));
+        _prevTipY[slot][finger] = tip.y;
+        _prevField[slot][finger] = idx;
+      }
+    }
+
+    _prevMicros = nowMicros;
+
+    return GestureOutput(
+      heldNotes: touched,
+      velocities: velocities,
+      cursors: cursors,
+      fields: fields,
     );
   }
 }

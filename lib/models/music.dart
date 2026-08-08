@@ -80,6 +80,25 @@ const Map<String, List<int>> kScales = <String, List<int>>{
   'Blues': <int>[0, 3, 5, 6, 7, 10],
 };
 
+/// Handpan (a.k.a. "hang") tunings as semitone offsets from the central Ding
+/// (index 0 is always the Ding). A handpan is a melodic steel percussion
+/// instrument: a deep central note surrounded by a ring of tone fields tuned to
+/// a scale. These are common commercial layouts; the concrete pitches are set
+/// by the chosen key + start octave, so e.g. "D Kurd" is the interval structure,
+/// transposed to whatever key the user picks.
+const Map<String, List<int>> kHandpanTunings = <String, List<int>>{
+  // Ding + 8 fields. The classic first handpan; a warm natural-minor sound.
+  'Kurd 9': <int>[0, 7, 8, 10, 12, 14, 15, 17, 19],
+  // Ding + 8 fields. Bright, wistful minor-with-a-major-6th feel.
+  'Celtic Minor 9': <int>[0, 7, 10, 12, 14, 15, 17, 19, 22],
+  // Ding + 8 fields. A Phrygian-dominant scale with an exotic augmented 2nd.
+  'Hijaz 9': <int>[0, 7, 8, 11, 12, 14, 15, 17, 19],
+  // Ding + 7 fields. An open, consonant major-pentatonic layout.
+  'Pentatonic 8': <int>[0, 7, 9, 12, 14, 16, 19, 21],
+  // Ding + 7 fields. Kurd's smaller sibling.
+  'Amara 8': <int>[0, 7, 8, 10, 12, 14, 15, 17],
+};
+
 /// Snaps [midi] down to the nearest note that belongs to [scale] rooted at
 /// [rootPitchClass]. Falls back to [midi] when the scale is empty.
 int quantizeToScale(int midi, List<int> scale, {int rootPitchClass = 0}) {

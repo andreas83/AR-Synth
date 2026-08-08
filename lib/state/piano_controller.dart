@@ -73,6 +73,23 @@ class PianoController extends ChangeNotifier {
   /// Applies one frame of gesture output: diffs held notes and (for theremin)
   /// updates live volume.
   void applyGesture(GestureOutput output) {
+    // Handpan mode is one-shot percussion: strike each freshly-entered tone
+    // field and let the handpan envelope ring it out (no sustained voices, no
+    // note-off). `heldNotes` here is just the touched set, used for highlight.
+    if (_settings.settings.gestureMode == GestureMode.handpan) {
+      for (final MapEntry<Note, double> e in output.velocities.entries) {
+        _audio.strike(e.key,
+            velocity: e.value, envelope: kHandpanEnvelope);
+      }
+      if (!setEquals(_gestureHeld, output.heldNotes)) {
+        _gestureHeld
+          ..clear()
+          ..addAll(output.heldNotes);
+        notifyListeners();
+      }
+      return;
+    }
+
     final Set<Note> next = output.heldNotes;
     bool changed = false;
 

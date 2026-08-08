@@ -15,7 +15,7 @@ gestures into music.
 
 ## Features
 
-- **Camera gesture instrument** with four selectable modes:
+- **Camera gesture instrument** with five selectable modes:
   - **Air Piano** — fingertips hover over the keyboard; push a finger down past
     the on-screen "press line" to play the key beneath it.
   - **Hand Poses** — hold a recognised pose (fist, point, peace, open hand,
@@ -24,6 +24,10 @@ gestures into music.
     choice), the other hand's height controls volume.
   - **Face** — tilt your head to choose the pitch (quantized to your scale) and
     open your mouth to sound it; a hands-free face-theremin.
+  - **Handpan** — a ring of tone fields (plus a central Ding) laid over the
+    camera; tap a field in the air to *strike* its note. Notes ring out
+    percussively; pick a tuning (Kurd, Celtic Minor, Hijaz, Pentatonic, Amara)
+    in Settings and transpose it with the *key* control.
 - **Two switchable sound engines:**
   - **Synth** — real-time oscillators (sine / square / saw / triangle) with a
     full **ADSR** envelope and **reverb / echo** effects (via `flutter_soloud`).
@@ -171,6 +175,11 @@ turns those into notes:
   de-bounce so poses don't flicker.
 - **Theremin** sorts detected hands left→right: the right hand's height sets the
   pitch (snapped to the selected scale), the left hand's height sets volume.
+- **Handpan** lays the chosen tuning out as a tone circle (Ding centered, ring
+  notes ascending around it). A fingertip entering a field edge-triggers a
+  one-shot *strike* through `AudioEngine.strike()`, which uses a percussive
+  envelope (instant attack, long ring-down, no sustain) so notes decay on their
+  own — no note-off, just like a real handpan.
 
 `hand_landmarker` reports landmarks in the raw camera-sensor frame, so the
 overlay maps them into the preview's display space — rotating by the sensor
