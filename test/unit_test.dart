@@ -298,6 +298,39 @@ void main() {
       expect(FaceTracker.rotationDegrees(90, false, 270), 180);
     });
   });
+
+  group('YUV → RGB conversion (face bitmap path)', () {
+    test('greyscale axis: chroma at 128 maps Y straight to grey', () {
+      expect(FaceTracker.yuvToRgb(0, 128, 128), (0, 0, 0));
+      expect(FaceTracker.yuvToRgb(128, 128, 128), (128, 128, 128));
+      expect(FaceTracker.yuvToRgb(255, 128, 128), (255, 255, 255));
+    });
+
+    test('primary colours land in the right corner of the cube', () {
+      // BT.601 encodings of pure red / green / blue.
+      final (int rr, int rg, int rb) = FaceTracker.yuvToRgb(81, 90, 240);
+      expect(rr, greaterThan(200));
+      expect(rg, lessThan(80));
+      expect(rb, lessThan(80));
+
+      final (int br, int bg, int bb) = FaceTracker.yuvToRgb(41, 240, 110);
+      expect(bb, greaterThan(200));
+      expect(br, lessThan(80));
+      expect(bg, lessThan(90));
+    });
+
+    test('outputs are always clamped to 0..255', () {
+      for (final (int, int, int) c in <(int, int, int)>[
+        FaceTracker.yuvToRgb(255, 0, 255),
+        FaceTracker.yuvToRgb(0, 255, 0),
+        FaceTracker.yuvToRgb(255, 255, 255),
+      ]) {
+        expect(c.$1, inInclusiveRange(0, 255));
+        expect(c.$2, inInclusiveRange(0, 255));
+        expect(c.$3, inInclusiveRange(0, 255));
+      }
+    });
+  });
 }
 
 /// Builds a crude but valid 21-landmark hand pointing up from a wrist at

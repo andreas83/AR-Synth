@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' show Size;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
@@ -7,11 +6,24 @@ import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../models/face_data.dart';
 
+/// A downscaled RGBA frame ready for ML Kit's bitmap path.
+class _RgbaImage {
+  const _RgbaImage(this.bytes, this.width, this.height);
+  final Uint8List bytes;
+  final int width;
+  final int height;
+}
+
 /// Runs ML Kit face detection on camera frames handed to it by
 /// [HandTrackingService] (so it shares the one allowed camera image stream
 /// rather than opening its own). Detection is async and self-throttled; the
-/// heavy byte copy happens synchronously before the first await, so the
+/// heavy pixel conversion happens synchronously before the first await, so the
 /// [CameraImage] buffer is safe to reuse once [process] returns.
+///
+/// Frames are fed to ML Kit via [InputImage.fromBitmap] (RGBA → native Bitmap),
+/// NOT [InputImage.fromBytes]: the byte-array path in `vision-common:17.3.0`
+/// throws an internal NullPointerException for otherwise-valid NV21 input, so
+/// the bitmap path is the reliable route on this plugin version.
 class FaceTracker {
   FaceTracker({this.minInterval = const Duration(milliseconds: 120)});
 
@@ -116,70 +128,84 @@ class FaceTracker {
 
   InputImage? _toInputImage(CameraImage image, int sensorOrientation,
       bool isFront, int deviceOrientationDegrees) {
-    final InputImageRotation rotation = InputImageRotationValue.fromRawValue(
-            rotationDegrees(
-                sensorOrientation, isFront, deviceOrientationDegrees)) ??
-        InputImageRotation.rotation0deg;
-    final Uint8List nv21 = _yuv420ToNv21(image);
-    return InputImage.fromBytes(
-      bytes: nv21,
-      metadata: InputImageMetadata(
-        size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: rotation,
-        format: InputImageFormat.nv21,
-        // The converted buffer is tightly packed at one byte per Y pixel.
-        bytesPerRow: image.width,
-      ),
+    final int degrees =
+        rotationDegrees(sensorOrientation, isFront, deviceOrientationDegrees);
+    final _RgbaImage rgba = _yuv420ToRgba(image);
+    // Bitmap path — see the class doc for why we avoid InputImage.fromBytes.
+    return InputImage.fromBitmap(
+      bitmap: rgba.bytes,
+      width: rgba.width,
+      height: rgba.height,
+      rotation: degrees,
     );
   }
 
-  /// Repacks a YUV_420_888 [CameraImage] into a tightly-packed NV21 buffer
-  /// (full-res Y plane followed by interleaved V,U at quarter resolution),
-  /// which is the only format ML Kit accepts on Android.
-  static Uint8List _yuv420ToNv21(CameraImage image) {
-    final int width = image.width;
-    final int height = image.height;
-    final Uint8List out = Uint8List(width * height + (width * height) ~/ 2);
+  /// Converts a YUV_420_888 [CameraImage] into a tightly-packed RGBA buffer,
+  /// downscaled by [step] (default 2 — expression detection needs far less than
+  /// full sensor resolution, and this quarters the per-frame work). Uses BT.601
+  /// fixed-point coefficients; reads are bounds-guarded against short/padded
+  /// plane strides. Returns bytes in R,G,B,A order as the native bitmap handler
+  /// expects.
+  static _RgbaImage _yuv420ToRgba(CameraImage image, {int step = 2}) {
+    final int w = image.width;
+    final int h = image.height;
+    final int outW = w ~/ step;
+    final int outH = h ~/ step;
+    final Uint8List out = Uint8List(outW * outH * 4);
 
-    final Plane yPlane = image.planes[0];
-    final Plane uPlane = image.planes[1];
-    final Plane vPlane = image.planes[2];
+    final Plane yP = image.planes[0];
+    final Plane uP = image.planes[1];
+    final Plane vP = image.planes[2];
+    final Uint8List yB = yP.bytes;
+    final Uint8List uB = uP.bytes;
+    final Uint8List vB = vP.bytes;
+    final int yRow = yP.bytesPerRow;
+    final int uRow = uP.bytesPerRow;
+    final int vRow = vP.bytesPerRow;
+    final int yPix = yP.bytesPerPixel ?? 1;
+    final int uPix = uP.bytesPerPixel ?? 2;
+    final int vPix = vP.bytesPerPixel ?? 2;
+    final int yLen = yB.length;
+    final int uLen = uB.length;
+    final int vLen = vB.length;
 
     int o = 0;
-    // Y plane, row by row (honoring the source row stride / padding). Clamp the
-    // copy length to what the source row actually holds so a short final row —
-    // seen on some devices — can't throw a RangeError.
-    final int yRowStride = yPlane.bytesPerRow;
-    final int yLen = yPlane.bytes.length;
-    for (int row = 0; row < height; row++) {
-      final int start = row * yRowStride;
-      final int copy = math.min(width, yLen - start);
-      if (copy <= 0) break;
-      out.setRange(o, o + copy, yPlane.bytes, start);
-      o += width; // keep NV21 row alignment even if the source row was short
-    }
-
-    // Interleaved chroma. NV21 order is V then U. Reads are bounds-guarded for
-    // the same reason; a missing sample falls back to neutral chroma (128).
-    o = width * height;
-    final int uvHeight = height ~/ 2;
-    final int uvWidth = width ~/ 2;
-    final int uRowStride = uPlane.bytesPerRow;
-    final int vRowStride = vPlane.bytesPerRow;
-    final int uPixelStride = uPlane.bytesPerPixel ?? 2;
-    final int vPixelStride = vPlane.bytesPerPixel ?? 2;
-    final int uLen = uPlane.bytes.length;
-    final int vLen = vPlane.bytes.length;
-    for (int row = 0; row < uvHeight; row++) {
-      for (int col = 0; col < uvWidth; col++) {
-        final int vi = row * vRowStride + col * vPixelStride;
-        final int ui = row * uRowStride + col * uPixelStride;
-        out[o++] = vi < vLen ? vPlane.bytes[vi] : 128;
-        out[o++] = ui < uLen ? uPlane.bytes[ui] : 128;
+    for (int j = 0; j < outH; j++) {
+      final int sy = j * step;
+      final int yRowOff = sy * yRow;
+      final int uRowOff = (sy >> 1) * uRow;
+      final int vRowOff = (sy >> 1) * vRow;
+      for (int i = 0; i < outW; i++) {
+        final int sx = i * step;
+        final int yi = yRowOff + sx * yPix;
+        final int uvCol = sx >> 1;
+        final int ui = uRowOff + uvCol * uPix;
+        final int vi = vRowOff + uvCol * vPix;
+        final int y = yi < yLen ? (yB[yi] & 0xff) : 0;
+        final int u = ui < uLen ? (uB[ui] & 0xff) : 128;
+        final int v = vi < vLen ? (vB[vi] & 0xff) : 128;
+        final (int r, int g, int b) = yuvToRgb(y, u, v);
+        out[o++] = r;
+        out[o++] = g;
+        out[o++] = b;
+        out[o++] = 255;
       }
     }
-    return out;
+    return _RgbaImage(out, outW, outH);
   }
+
+  /// BT.601 YUV → RGB for a single pixel, with 0..255 inputs and clamped 0..255
+  /// outputs. Fixed-point (coefficients scaled by 65536) and pure/testable.
+  static (int, int, int) yuvToRgb(int y, int u, int v) {
+    final int cu = u - 128;
+    final int cv = v - 128;
+    final int r = y + ((91881 * cv) >> 16);
+    final int g = y - ((22554 * cu + 46802 * cv) >> 16);
+    final int b = y + ((116130 * cu) >> 16);
+    return (_clamp255(r), _clamp255(g), _clamp255(b));
+  }
+
+  static int _clamp255(int x) => x < 0 ? 0 : (x > 255 ? 255 : x);
 
   FaceFrame _toFaceFrame(List<Face> faces) {
     if (faces.isEmpty) return const FaceFrame.empty();
