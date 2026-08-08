@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 
 import '../models/music.dart';
 import '../models/synth_settings.dart';
+import '../services/update_service.dart';
 import '../state/settings_controller.dart';
 import '../widgets/synth_controls.dart';
+import '../widgets/update_dialog.dart';
 
 /// Full settings page: gesture mode + keyboard range on top of the shared
 /// synth controls.
@@ -110,9 +113,93 @@ class SettingsScreen extends StatelessWidget {
           const Divider(height: 8),
           // Reuse the shared synth panel for engine/waveform/adsr/effects.
           const SynthControls(),
+          const Divider(height: 8),
+          const _AboutSection(),
           const SizedBox(height: 24),
         ],
       ),
+    );
+  }
+}
+
+/// App version + manual "check for updates" (the app also checks silently on
+/// launch). Restores the control that used to live on the old landing screen.
+class _AboutSection extends StatefulWidget {
+  const _AboutSection();
+
+  @override
+  State<_AboutSection> createState() => _AboutSectionState();
+}
+
+class _AboutSectionState extends State<_AboutSection> {
+  final UpdateService _updates = UpdateService();
+  String _version = '';
+  bool _checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  @override
+  void dispose() {
+    _updates.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final PackageInfo info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _version = info.version);
+    } catch (_) {
+      // Version is cosmetic; ignore failures.
+    }
+  }
+
+  Future<void> _check() async {
+    if (_checking) return;
+    setState(() => _checking = true);
+    final UpdateInfo? update = await _updates.checkForUpdate();
+    if (!mounted) return;
+    setState(() => _checking = false);
+
+    if (update != null) {
+      await UpdateDialog.show(context, update: update, service: _updates);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("You're on the latest version.")),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Text('About',
+              style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: Colors.white.withValues(alpha: 0.9))),
+        ),
+        ListTile(
+          title: const Text('Check for updates'),
+          subtitle:
+              Text(_version.isEmpty ? 'AR Synth' : 'Version $_version'),
+          trailing: _checking
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.system_update),
+          onTap: _checking ? null : _check,
+        ),
+      ],
     );
   }
 }
