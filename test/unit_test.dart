@@ -280,6 +280,43 @@ void main() {
     });
   });
 
+  group('theremin pitch range', () {
+    final GestureMapper mapper = GestureMapper();
+    const SynthSettings s = SynthSettings(
+        gestureMode: GestureMode.theremin, thereminScale: 'Chromatic');
+    HandFrame frame(double indexTipY) => HandFrame(
+        hands: <Hand>[_thereminHand(indexTipY)], imageWidth: 1, imageHeight: 1);
+
+    test('spans five octaves (C2..C7) across the vertical sweep', () {
+      // Hand at the top of the frame plays the highest note, bottom the lowest.
+      expect(mapper.map(frame(0.0), s).heldNotes.first.midi, 96); // C7
+      expect(mapper.map(frame(1.0), s).heldNotes.first.midi, 36); // C2
+    });
+
+    test('the sweep is monotonic (higher hand => higher pitch)', () {
+      final int high = mapper.map(frame(0.25), s).heldNotes.first.midi;
+      final int low = mapper.map(frame(0.75), s).heldNotes.first.midi;
+      expect(high, greaterThan(low));
+    });
+  });
+
+  group('gesture guide', () {
+    test('every mode has a non-empty inline hint and tips', () {
+      for (final GestureMode m in GestureMode.values) {
+        expect(m.inlineHint.trim(), isNotEmpty, reason: '${m.label} hint');
+        expect(m.tips, isNotEmpty, reason: '${m.label} tips');
+        for (final GestureTip t in m.tips) {
+          expect(t.label.trim(), isNotEmpty);
+          expect(t.detail.trim(), isNotEmpty);
+        }
+      }
+    });
+
+    test('the hand-poses guide lists all five poses', () {
+      expect(GestureMode.discretePoses.tips.length, 5);
+    });
+  });
+
   group('face tracker input rotation', () {
     test('portrait lock: both lenses use the sensor mount orientation', () {
       // Device rotation 0 (the app is portrait-locked): front and back reduce
@@ -299,6 +336,16 @@ void main() {
     });
   });
 
+}
+
+/// A minimal valid 21-landmark hand whose index fingertip sits at the given
+/// height, used to drive the theremin pitch mapping (which reads that tip's y).
+Hand _thereminHand(double indexTipY) {
+  final List<HandLandmark> lm =
+      List<HandLandmark>.filled(21, const HandLandmark(0.5, 0.5, 0));
+  lm[kWrist] = const HandLandmark(0.5, 0.6, 0);
+  lm[kIndexTip] = HandLandmark(0.5, indexTipY, 0);
+  return Hand(landmarks: lm);
 }
 
 /// Builds a crude but valid 21-landmark hand pointing up from a wrist at

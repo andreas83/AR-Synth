@@ -317,8 +317,10 @@ class GestureMapper {
   // -- Theremin ---------------------------------------------------------------
 
   GestureOutput _mapTheremin(HandFrame frame, SynthSettings settings) {
-    const int midiLow = 48; // C3
-    const int midiHigh = 84; // C6
+    // A wide five-octave sweep so the pitch hand can reach deep lows and bright
+    // highs without leaving the frame. (The Synth octave-shift stacks on top.)
+    const int midiLow = 36; // C2
+    const int midiHigh = 96; // C7
     final List<int> scale = kScales[settings.thereminScale] ?? kScales['Chromatic']!;
 
     // Sort hands left→right; left hand controls volume, right controls pitch.

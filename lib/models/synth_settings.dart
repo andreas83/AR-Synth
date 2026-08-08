@@ -64,6 +64,65 @@ extension GestureModeLabel on GestureMode {
       };
 }
 
+/// One entry in the in-app gesture guide: a short [label] and its [detail].
+class GestureTip {
+  const GestureTip(this.label, this.detail);
+
+  final String label;
+  final String detail;
+}
+
+/// Human-facing "how to play" content for each gesture mode, surfaced as an
+/// always-visible legend plus a tappable guide sheet on the camera screen.
+extension GestureGuide on GestureMode {
+  /// A single compact line shown as the always-on legend for this mode.
+  String get inlineHint => switch (this) {
+        GestureMode.airPiano =>
+          'Move your hand over the lanes, then tap a fingertip below the line.',
+        GestureMode.discretePoses =>
+          'Hold a pose: point, peace, open hand, thumbs-up or fist.',
+        GestureMode.theremin =>
+          'Right-hand height = pitch · left-hand height = volume.',
+        GestureMode.face =>
+          'Tilt your head for pitch · open your mouth to play.',
+      };
+
+  /// The per-gesture breakdown shown in the guide sheet.
+  List<GestureTip> get tips => switch (this) {
+        GestureMode.airPiano => const <GestureTip>[
+            GestureTip('Hover & tap',
+                'Move your fingers over the lanes, then push a fingertip below the press line to play that note.'),
+            GestureTip('Play harder',
+                'With velocity on, a faster downward tap plays louder.'),
+            GestureTip('Pinch → filter',
+                'With pinch-to-cutoff on, your free hand’s pinch opens and closes the filter.'),
+          ],
+        GestureMode.discretePoses => const <GestureTip>[
+            GestureTip(
+                'Point', 'Index finger only — plays the root note.'),
+            GestureTip('Peace',
+                'Index + middle — plays the root and the fifth.'),
+            GestureTip('Open hand',
+                'All fingers spread — plays a major triad.'),
+            GestureTip('Thumbs up',
+                'Thumb only — plays the V (dominant) chord.'),
+            GestureTip('Fist', 'All fingers curled — silence.'),
+          ],
+        GestureMode.theremin => const <GestureTip>[
+            GestureTip('Pitch hand',
+                'Your right hand’s height sweeps the pitch, snapped to the theremin scale, across five octaves (C2–C7).'),
+            GestureTip('Volume hand',
+                'Your left hand’s height sets the volume. With one hand raised it plays at full volume.'),
+          ],
+        GestureMode.face => const <GestureTip>[
+            GestureTip('Head tilt',
+                'Tilt your head left/right to choose the pitch, snapped to your scale.'),
+            GestureTip('Open mouth',
+                'Open your mouth to sound the note — wider is louder.'),
+          ],
+      };
+}
+
 extension SynthWaveLabel on SynthWave {
   String get label => switch (this) {
         SynthWave.sine => 'Sine',

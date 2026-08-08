@@ -312,6 +312,56 @@ class _GestureScreenState extends State<GestureScreen>
     );
   }
 
+  /// Shows a bottom sheet explaining the gestures available in [mode] and what
+  /// each one does — the "full" half of the in-app gesture guide.
+  void _showGestureGuide(GestureMode mode) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(AppTheme.radiusLg)),
+      ),
+      builder: (BuildContext sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                const _SheetHandle(),
+                Row(
+                  children: <Widget>[
+                    Icon(_GestureModeButton._iconFor(mode),
+                        color: AppTheme.primary, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text('${mode.label} — how to play',
+                          style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: AppTheme.textHi)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(mode.description,
+                    style: const TextStyle(
+                        fontSize: 13.5, height: 1.4, color: AppTheme.textLow)),
+                const SizedBox(height: 18),
+                for (final GestureTip tip in mode.tips) ...<Widget>[
+                  _TipRow(tip: tip),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final SettingsController settings = context.watch<SettingsController>();
@@ -326,6 +376,11 @@ class _GestureScreenState extends State<GestureScreen>
         actions: <Widget>[
           _GestureModeButton(
               current: s.gestureMode, onSelected: settings.setGestureMode),
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'How to play',
+            onPressed: () => _showGestureGuide(s.gestureMode),
+          ),
           if (_service.hasMultipleCameras)
             IconButton(
               icon: const Icon(Icons.cameraswitch_outlined),
@@ -459,6 +514,13 @@ class _GestureScreenState extends State<GestureScreen>
               crossAxisAlignment: CrossAxisAlignment.end,
               children: <Widget>[
                 Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _ModeLegend(
+                    hint: s.gestureMode.inlineHint,
+                    onTap: () => _showGestureGuide(s.gestureMode),
+                  ),
+                ),
+                Padding(
                   padding: const EdgeInsets.only(bottom: 12, right: 2),
                   child: GradientButton(
                     onPressed: _openSynthSheet,
@@ -519,6 +581,92 @@ class _GestureScreenState extends State<GestureScreen>
               icon: Icons.refresh_rounded,
               label: 'Retry',
             ),
+    );
+  }
+}
+
+/// Always-visible one-line legend for the active gesture mode. Tapping it (or
+/// the app-bar info button) opens the fuller [_showGestureGuide] sheet.
+class _ModeLegend extends StatelessWidget {
+  const _ModeLegend({required this.hint, required this.onTap});
+
+  final String hint;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: GlassPanel(
+        padding: const EdgeInsets.fromLTRB(12, 8, 10, 8),
+        radius: AppTheme.radiusPill,
+        opacity: 0.55,
+        child: Row(
+          children: <Widget>[
+            const Icon(Icons.touch_app_outlined,
+                size: 15, color: AppTheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(hint,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 12, height: 1.25, color: AppTheme.textHi)),
+            ),
+            const SizedBox(width: 8),
+            const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Icon(Icons.info_outline, size: 15, color: AppTheme.textLow),
+                SizedBox(width: 4),
+                Text('Guide',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textLow)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One bulleted "label — detail" line in the gesture guide sheet.
+class _TipRow extends StatelessWidget {
+  const _TipRow({required this.tip});
+
+  final GestureTip tip;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Container(
+          margin: const EdgeInsets.only(top: 4, right: 12),
+          width: 7,
+          height: 7,
+          decoration: const BoxDecoration(
+              color: AppTheme.primary, shape: BoxShape.circle),
+        ),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: const TextStyle(
+                  fontSize: 13.5, height: 1.35, color: AppTheme.textMed),
+              children: <TextSpan>[
+                TextSpan(
+                    text: '${tip.label} — ',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, color: AppTheme.textHi)),
+                TextSpan(text: tip.detail),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

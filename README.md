@@ -20,8 +20,9 @@ gestures into music.
     the on-screen "press line" to play the key beneath it.
   - **Hand Poses** — hold a recognised pose (fist, point, peace, open hand,
     thumbs up); each fires a note or chord.
-  - **Theremin** — one hand's height sweeps pitch (quantized to a scale of your
-    choice), the other hand's height controls volume.
+  - **Theremin** — one hand's height sweeps pitch across a wide five-octave
+    range (C2–C7, quantized to a scale of your choice), the other hand's height
+    controls volume.
   - **Face** — tilt your head to choose the pitch (quantized to your scale) and
     open your mouth to sound it; a hands-free face-theremin.
 - **Two switchable sound engines:**
@@ -49,6 +50,9 @@ gestures into music.
   screen exposes engine, waveform, ADSR, effects, filter/LFO, scale, arpeggiator,
   octave and visuals without leaving the camera; a keyboard strip highlights the
   notes you're playing.
+- **In-app gesture guide** — an always-on legend on the camera screen spells out
+  what the current mode responds to, and an **ⓘ** button (or tapping the legend)
+  opens a per-mode sheet detailing every gesture and the note/chord it plays.
 - **Live, persisted settings** — engine, waveform, ADSR, octave shift, effects,
   filter/LFO, velocity, scale + key, arpeggiator, visualizer, gesture mode &
   sensitivity, keyboard range, theremin scale.
