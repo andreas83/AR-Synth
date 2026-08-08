@@ -43,6 +43,7 @@ class _GestureScreenState extends State<GestureScreen>
   final UpdateService _updates = UpdateService();
   StreamSubscription<HandFrame>? _sub;
   StreamSubscription<FaceFrame>? _faceSub;
+  Timer? _debugRefresh;
 
   HandFrame _frame = const HandFrame.empty();
   GestureOutput _output = GestureOutput.empty;
@@ -72,6 +73,11 @@ class _GestureScreenState extends State<GestureScreen>
       // Check for an app update silently on launch (this is now the entry
       // screen); only interrupt the user if there is actually a newer build.
       _checkForUpdate();
+    });
+    // Keep the face-detection HUD live even when no frames are arriving (so a
+    // "detection never runs" state is visible, not just a stale render).
+    _debugRefresh = Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (mounted) setState(() {});
     });
   }
 
@@ -226,6 +232,7 @@ class _GestureScreenState extends State<GestureScreen>
     _clockMs.dispose();
     _sub?.cancel();
     _faceSub?.cancel();
+    _debugRefresh?.cancel();
     _service.dispose();
     _updates.dispose();
     _piano?.clearGesture();
@@ -388,6 +395,25 @@ class _GestureScreenState extends State<GestureScreen>
           child: _StatusBar(
               frame: _frame, output: _output, face: _face, settings: s),
         ),
+        // Face-detection diagnostics HUD (shown while face features are on).
+        if (s.faceControlEnabled || s.gestureMode == GestureMode.face)
+          Positioned(
+            top: kToolbarHeight + 72,
+            left: 12,
+            right: 12,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _service.faceDebugLine,
+                style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 12, color: Colors.white),
+              ),
+            ),
+          ),
         // Keyboard highlight strip (non-interactive display of what's playing).
         Positioned(
           left: 8,

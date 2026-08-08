@@ -32,6 +32,19 @@ class FaceTracker {
   FaceFrame _latest = const FaceFrame.empty();
   FaceFrame get latest => _latest;
 
+  // -- Diagnostics (surfaced on-screen while debugging face detection) --------
+  /// Frames handed to ML Kit (conversion succeeded, detect was called).
+  int attempts = 0;
+
+  /// Detect calls that returned without throwing.
+  int detections = 0;
+
+  /// Detect calls that returned at least one face.
+  int facesFound = 0;
+
+  /// Last error thrown by the conversion or the detector, if any.
+  String? lastError;
+
   /// Detects a face in [image]; on completion calls [onFrame] with the result.
   /// No-op if a detection is already running or the throttle window is open.
   ///
@@ -58,16 +71,33 @@ class FaceTracker {
       // silently kill face detection for the rest of the session.
       final InputImage? input = _toInputImage(
           image, sensorOrientation, isFront, deviceOrientationDegrees);
-      if (input == null) return;
+      if (input == null) {
+        lastError = 'null input image';
+        onFrame(const FaceFrame.empty());
+        return;
+      }
+      attempts++;
       final List<Face> faces = await _detector.processImage(input);
+      detections++;
+      if (faces.isNotEmpty) facesFound++;
       final FaceFrame frame = _toFaceFrame(faces);
       _latest = frame;
       onFrame(frame);
     } catch (e) {
+      lastError = e.toString();
       debugPrint('FaceTracker: detect error: $e');
+      // Still emit so the UI refreshes and shows the live diagnostics.
+      onFrame(const FaceFrame.empty());
     } finally {
       _busy = false;
     }
+  }
+
+  /// A one-line snapshot of the detection pipeline for the on-screen HUD.
+  String get debugLine {
+    final String err =
+        lastError == null ? '' : ' err:${lastError!.split('\n').first}';
+    return 'at:$attempts dt:$detections fc:$facesFound$err';
   }
 
   /// The clockwise rotation (0/90/180/270) ML Kit must apply to a frame to make

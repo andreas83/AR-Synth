@@ -250,6 +250,15 @@ class HandTrackingService {
   /// Whether the front (selfie) lens is the one currently requested/active.
   bool get usingFrontCamera => _lens == CameraLensDirection.front;
 
+  /// One-line face-detection diagnostics for the on-screen HUD: whether the
+  /// tracker exists, whether detection is enabled, and its live counters.
+  String get faceDebugLine {
+    final FaceTracker? f = _faceTracker;
+    final String en = faceEnabled ? '1' : '0';
+    if (f == null) return 'face en:$en ft:null';
+    return 'face en:$en ${f.debugLine}';
+  }
+
   /// Tears down the current camera and restarts on the other lens (front↔back).
   /// Returns true when the new camera is running. The face-detection toggle and
   /// hand count are preserved across the switch.
