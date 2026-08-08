@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/music.dart';
 import '../models/synth_settings.dart';
 import '../services/audio_engine.dart';
 import '../state/settings_controller.dart';
@@ -96,6 +97,127 @@ class SynthControls extends StatelessWidget {
           _label('Effects'),
           _slider('Reverb', s.reverb, (double v) => c.setReverb(v)),
           _slider('Echo', s.echo, (double v) => c.setEcho(v)),
+
+          const Divider(height: 32),
+          _label('Low-pass filter'),
+          _switchRow('Enable filter', s.filterEnabled, c.setFilterEnabled),
+          if (s.filterEnabled) ...<Widget>[
+            _slider('Cutoff', s.filterCutoff, c.setFilterCutoff),
+            _slider('Resonance', s.filterResonance, c.setFilterResonance),
+          ],
+          _switchRow('LFO sweep', s.lfoEnabled, c.setLfoEnabled),
+          if (s.lfoEnabled) ...<Widget>[
+            _slider('LFO rate', s.lfoRateHz, c.setLfoRateHz,
+                min: 0.1, max: 12.0),
+            _slider('LFO depth', s.lfoDepth, c.setLfoDepth),
+          ],
+          _switchRow('Pinch → cutoff (free hand)', s.pinchModEnabled,
+              c.setPinchModEnabled),
+
+          const Divider(height: 32),
+          _label('Performance'),
+          _switchRow('Velocity (tap speed)', s.velocityEnabled,
+              c.setVelocityEnabled),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _dropdown<String>(
+                  'Scale',
+                  s.scaleName,
+                  kScales.keys.toList(growable: false),
+                  (String v) => v,
+                  c.setScaleName,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _dropdown<int>(
+                  'Key',
+                  s.keyRoot,
+                  List<int>.generate(12, (int i) => i),
+                  (int v) => kPitchClassNames[v],
+                  c.setKeyRoot,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Scale + key apply to Air Piano lanes.',
+            style: TextStyle(fontSize: 11, color: Colors.white54),
+          ),
+
+          const Divider(height: 32),
+          _label('Arpeggiator'),
+          _switchRow('Enable arpeggiator', s.arpEnabled, c.setArpEnabled),
+          if (s.arpEnabled) ...<Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _dropdown<ArpPattern>(
+                    'Pattern',
+                    s.arpPattern,
+                    ArpPattern.values,
+                    (ArpPattern v) => v.label,
+                    c.setArpPattern,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _dropdown<ArpRate>(
+                    'Rate',
+                    s.arpRate,
+                    ArpRate.values,
+                    (ArpRate v) => v.label,
+                    c.setArpRate,
+                  ),
+                ),
+              ],
+            ),
+            _slider('Tempo (BPM)', s.bpm, c.setBpm, min: 40, max: 240),
+            _slider('Gate', s.arpGate, c.setArpGate, min: 0.05, max: 0.95),
+          ],
+
+          const Divider(height: 32),
+          _label('Face control (experimental)'),
+          _switchRow('Enable face modulation', s.faceControlEnabled,
+              c.setFaceControlEnabled),
+          if (s.faceControlEnabled) ...<Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _dropdown<FaceSignal>(
+                    'Expression',
+                    s.faceSignal,
+                    FaceSignal.values,
+                    (FaceSignal v) => v.label,
+                    c.setFaceSignal,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _dropdown<FaceTarget>(
+                    'Controls',
+                    s.faceTarget,
+                    FaceTarget.values,
+                    (FaceTarget v) => v.label,
+                    c.setFaceTarget,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Uses the front camera; open your mouth / smile / tilt your head '
+              'to sweep the chosen parameter.',
+              style: TextStyle(fontSize: 11, color: Colors.white54),
+            ),
+          ],
+
+          const Divider(height: 32),
+          _label('Visuals'),
+          _switchRow('Note-ripple visualizer', s.visualizerEnabled,
+              c.setVisualizerEnabled),
         ],
       ),
     );
@@ -128,6 +250,48 @@ class SynthControls extends StatelessWidget {
           child: Text(value.toStringAsFixed(2),
               textAlign: TextAlign.right,
               style: const TextStyle(fontSize: 12, color: Colors.white70)),
+        ),
+      ],
+    );
+  }
+
+  Widget _switchRow(String label, bool value, ValueChanged<bool> onChanged) {
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: Text(label, style: const TextStyle(fontSize: 13)),
+        ),
+        Switch(value: value, onChanged: onChanged),
+      ],
+    );
+  }
+
+  Widget _dropdown<T>(
+    String label,
+    T value,
+    List<T> items,
+    String Function(T) labelOf,
+    ValueChanged<T> onChanged,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(label,
+            style: const TextStyle(fontSize: 12, color: Colors.white70)),
+        const SizedBox(height: 4),
+        DropdownButton<T>(
+          value: value,
+          isExpanded: true,
+          items: <DropdownMenuItem<T>>[
+            for (final T item in items)
+              DropdownMenuItem<T>(
+                value: item,
+                child: Text(labelOf(item)),
+              ),
+          ],
+          onChanged: (T? v) {
+            if (v != null) onChanged(v);
+          },
         ),
       ],
     );

@@ -31,9 +31,11 @@ class FingerCursor {
 class GestureOutput {
   const GestureOutput({
     this.heldNotes = const <Note>{},
+    this.velocities = const <Note, double>{},
     this.cursors = const <FingerCursor>[],
     this.poses = const <HandPose>[],
     this.thereminVolume,
+    this.pinchModulation,
     this.pressLineY,
     this.pitchHandY,
     this.volumeHandY,
@@ -42,6 +44,14 @@ class GestureOutput {
   /// Notes that should currently sound. The controller diffs successive sets
   /// to decide note-on / note-off.
   final Set<Note> heldNotes;
+
+  /// Per-note attack velocity (0..1) for notes that turned on this frame.
+  /// Notes absent from the map play at the default velocity.
+  final Map<Note, double> velocities;
+
+  /// Normalized 0..1 modulation from the non-playing hand's pinch (null when no
+  /// modulator hand is present / pinch modulation is disabled).
+  final double? pinchModulation;
 
   /// Fingertip cursors for the overlay.
   final List<FingerCursor> cursors;
@@ -71,12 +81,52 @@ class GestureMapper {
   final List<HandPose> _stablePose = <HandPose>[HandPose.none, HandPose.none];
   final List<int> _poseStreak = <int>[0, 0];
 
+  // Air-piano velocity tracking: last-seen fingertip y per [handSlot][finger].
+  final List<List<double?>> _prevTipY =
+      List<List<double?>>.generate(2, (_) => List<double?>.filled(5, null));
+  int? _prevMicros;
+
   void reset() {
     for (int i = 0; i < _stablePose.length; i++) {
       _stablePose[i] = HandPose.none;
       _poseStreak[i] = 0;
     }
+    for (final List<double?> row in _prevTipY) {
+      for (int i = 0; i < row.length; i++) {
+        row[i] = null;
+      }
+    }
+    _prevMicros = null;
   }
+
+  /// Maps a fingertip's downward speed (normalized units per second, where y
+  /// grows downward) to an attack velocity in [0.05, 1.0]. Pure + testable.
+  static double speedToVelocity(double downwardSpeed) {
+    const double vMin = 0.15; // gentle press
+    const double vMax = 2.5; // fast jab
+    final double t = (downwardSpeed - vMin) / (vMax - vMin);
+    return t.clamp(0.05, 1.0);
+  }
+
+  /// The playable Air-Piano lanes for the given settings: notes in the chosen
+  /// scale + key across the keyboard span. With the defaults ('Major' / C) this
+  /// equals the white keys, matching the original behavior. Pure + testable.
+  static List<Note> airPianoLanes(SynthSettings settings) {
+    final List<Note> keyboard = buildKeyboard(
+        startOctave: settings.startOctave, octaves: settings.octaves);
+    final List<int> scale =
+        kScales[settings.scaleName] ?? kScales['Chromatic']!;
+    final int root = ((settings.keyRoot % 12) + 12) % 12;
+    return keyboard
+        .where((Note n) =>
+            quantizeToScale(n.midi, scale, rootPitchClass: root) == n.midi)
+        .toList(growable: false);
+  }
+
+  /// Detected hands sorted left→right for stable per-slot state.
+  static List<Hand> _sortedHands(HandFrame frame) =>
+      List<Hand>.of(frame.hands)
+        ..sort((Hand a, Hand b) => a[kWrist].x.compareTo(b[kWrist].x));
 
   GestureOutput map(HandFrame frame, SynthSettings settings) {
     if (!frame.hasHands) {
@@ -93,28 +143,55 @@ class GestureMapper {
   // -- Air piano --------------------------------------------------------------
 
   GestureOutput _mapAirPiano(HandFrame frame, SynthSettings settings) {
-    final List<Note> keyboard =
-        buildKeyboard(startOctave: settings.startOctave, octaves: settings.octaves);
-    final List<Note> whites = whiteKeysOf(keyboard);
-    if (whites.isEmpty) return GestureOutput.empty;
+    final List<Note> lanes = airPianoLanes(settings);
+    if (lanes.isEmpty) return GestureOutput.empty;
 
     // Higher sensitivity raises the press line (easier to trigger).
     final double pressLineY = 0.75 - settings.gestureSensitivity * 0.35;
 
     final Set<Note> held = <Note>{};
+    final Map<Note, double> velocities = <Note, double>{};
     final List<FingerCursor> cursors = <FingerCursor>[];
 
-    for (final Hand hand in frame.hands) {
+    // Stable left→right ordering so per-slot velocity state is meaningful.
+    final List<Hand> hands = _sortedHands(frame);
+    final int nowMicros = DateTime.now().microsecondsSinceEpoch;
+    final double dt =
+        _prevMicros == null ? 0.0 : (nowMicros - _prevMicros!) / 1e6;
+
+    final List<int> pressingCount = <int>[0, 0];
+
+    for (int slot = 0; slot < hands.length && slot < 2; slot++) {
+      final Hand hand = hands[slot];
       if (!hand.isValid) continue;
       // Index, middle, ring, pinky act as the "keys"; thumb is skipped.
       for (int finger = 1; finger < 5; finger++) {
-        if (!FingerGeometry.isFingerExtended(hand, finger)) continue;
+        if (!FingerGeometry.isFingerExtended(hand, finger)) {
+          _prevTipY[slot][finger] = null; // reset when the finger retracts
+          continue;
+        }
         final HandLandmark tip = FingerGeometry.tip(hand, finger);
         final int lane =
-            (tip.x * whites.length).floor().clamp(0, whites.length - 1);
-        final Note note = whites[lane];
+            (tip.x * lanes.length).floor().clamp(0, lanes.length - 1);
+        final Note note = lanes[lane];
         final bool pressing = tip.y >= pressLineY;
-        if (pressing) held.add(note);
+        final double? prevY = _prevTipY[slot][finger];
+        final bool wasPressing = prevY != null && prevY >= pressLineY;
+
+        if (pressing) {
+          held.add(note);
+          pressingCount[slot]++;
+          if (!wasPressing) {
+            // Note-on this frame — derive velocity from downward speed.
+            double v = 1.0;
+            if (settings.velocityEnabled) {
+              v = (dt > 0 && prevY != null)
+                  ? speedToVelocity((tip.y - prevY) / dt)
+                  : 0.7; // no prior sample: medium hit
+            }
+            velocities[note] = v;
+          }
+        }
         cursors.add(FingerCursor(
           x: tip.x,
           y: tip.y,
@@ -122,13 +199,37 @@ class GestureMapper {
           note: note,
           pressing: pressing,
         ));
+        _prevTipY[slot][finger] = tip.y;
+      }
+    }
+
+    _prevMicros = nowMicros;
+
+    // Pinch-to-modulate: the first non-playing hand's pinch drives the filter.
+    double? pinchMod;
+    if (settings.pinchModEnabled) {
+      for (int slot = 0; slot < hands.length && slot < 2; slot++) {
+        if (pressingCount[slot] != 0 || !hands[slot].isValid) continue;
+        final double pd = FingerGeometry.pinchDistance(hands[slot]);
+        // Tight pinch (~0.1) => dark; open (~0.8) => bright.
+        pinchMod = ((pd - 0.1) / (0.8 - 0.1)).clamp(0.0, 1.0);
+        final HandLandmark thumb = hands[slot][kThumbTip];
+        final HandLandmark idx = hands[slot][kIndexTip];
+        cursors.add(FingerCursor(
+          x: (thumb.x + idx.x) / 2,
+          y: (thumb.y + idx.y) / 2,
+          colorIndex: 0,
+        ));
+        break;
       }
     }
 
     return GestureOutput(
       heldNotes: held,
+      velocities: velocities,
       cursors: cursors,
       pressLineY: pressLineY,
+      pinchModulation: pinchMod,
     );
   }
 

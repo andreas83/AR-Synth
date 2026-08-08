@@ -66,6 +66,49 @@ class SettingsController extends ChangeNotifier {
 
   /// Cycle the camera preview rotation (0→1→2→3→0). Persisted, so once the
   /// user gets it upright it stays that way on their device.
-  void rotateCameraPreview() => _update(
-      _settings.copyWith(cameraQuarterTurns: (_settings.cameraQuarterTurns + 1) % 4));
+  void rotateCameraPreview() => _update(_settings.copyWith(
+      cameraQuarterTurns: (_settings.cameraQuarterTurns + 1) % 4));
+
+  // Expressive control -------------------------------------------------------
+  void setVelocityEnabled(bool v) =>
+      _update(_settings.copyWith(velocityEnabled: v));
+  void setFilterEnabled(bool v) =>
+      _update(_settings.copyWith(filterEnabled: v));
+  void setFilterCutoff(double v) =>
+      _update(_settings.copyWith(filterCutoff: v.clamp(0.0, 1.0)));
+  void setFilterResonance(double v) =>
+      _update(_settings.copyWith(filterResonance: v.clamp(0.0, 1.0)));
+  void setLfoEnabled(bool v) => _update(_settings.copyWith(lfoEnabled: v));
+  void setLfoRateHz(double v) =>
+      _update(_settings.copyWith(lfoRateHz: v.clamp(0.05, 20.0)));
+  void setLfoDepth(double v) =>
+      _update(_settings.copyWith(lfoDepth: v.clamp(0.0, 1.0)));
+  void setPinchModEnabled(bool v) =>
+      _update(_settings.copyWith(pinchModEnabled: v));
+
+  // Scale lock ---------------------------------------------------------------
+  void setScaleName(String s) => _update(_settings.copyWith(scaleName: s));
+  void setKeyRoot(int r) =>
+      _update(_settings.copyWith(keyRoot: ((r % 12) + 12) % 12));
+
+  // Arpeggiator --------------------------------------------------------------
+  void setArpEnabled(bool v) => _update(_settings.copyWith(arpEnabled: v));
+  void setArpPattern(ArpPattern p) =>
+      _update(_settings.copyWith(arpPattern: p));
+  void setArpRate(ArpRate r) => _update(_settings.copyWith(arpRate: r));
+  void setBpm(double v) => _update(_settings.copyWith(bpm: v.clamp(20.0, 300.0)));
+  void setArpGate(double v) =>
+      _update(_settings.copyWith(arpGate: v.clamp(0.05, 0.95)));
+
+  // Visualizer ---------------------------------------------------------------
+  void setVisualizerEnabled(bool v) =>
+      _update(_settings.copyWith(visualizerEnabled: v));
+
+  // Face control -------------------------------------------------------------
+  void setFaceControlEnabled(bool v) =>
+      _update(_settings.copyWith(faceControlEnabled: v));
+  void setFaceSignal(FaceSignal s) =>
+      _update(_settings.copyWith(faceSignal: s));
+  void setFaceTarget(FaceTarget t) =>
+      _update(_settings.copyWith(faceTarget: t));
 }

@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../models/face_data.dart';
 import '../models/hand_data.dart';
 import '../models/music.dart';
 import '../models/synth_settings.dart';
@@ -15,6 +17,7 @@ import '../state/settings_controller.dart';
 import '../theme.dart';
 import '../utils/finger_geometry.dart';
 import '../widgets/hand_overlay.dart';
+import '../widgets/note_ripple_painter.dart';
 import '../widgets/piano_keyboard.dart';
 import '../widgets/synth_controls.dart';
 
@@ -30,25 +33,75 @@ class GestureScreen extends StatefulWidget {
 }
 
 class _GestureScreenState extends State<GestureScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   final HandTrackingService _service = HandTrackingService();
   final GestureMapper _mapper = GestureMapper();
   StreamSubscription<HandFrame>? _sub;
+  StreamSubscription<FaceFrame>? _faceSub;
 
   HandFrame _frame = const HandFrame.empty();
   GestureOutput _output = GestureOutput.empty;
+  FaceFrame _face = const FaceFrame.empty();
   GestureMode? _lastMode;
   bool _starting = true;
 
   PianoController? _piano;
   SettingsController? _settingsController;
 
+  // Reactive visualizer: a Ticker advances a millisecond clock that drives the
+  // ripple layer's repaint independently of the ~15 fps hand frames.
+  late final Ticker _ticker;
+  final ValueNotifier<int> _clockMs = ValueNotifier<int>(0);
+  final List<NoteRipple> _ripples = <NoteRipple>[];
+  Set<Note> _prevHeld = <Note>{};
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _ticker = createTicker(_onTick)..start();
     _sub = _service.frames.listen(_onFrame);
+    _faceSub = _service.faces.listen(_onFace);
     WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+  }
+
+  void _onFace(FaceFrame face) {
+    if (!mounted) return;
+    _piano?.applyFaceModulation(face);
+    setState(() => _face = face);
+  }
+
+  void _onTick(Duration elapsed) {
+    final int ms = elapsed.inMilliseconds;
+    _ripples.removeWhere((NoteRipple r) => r.isDead(ms));
+    _clockMs.value = ms;
+  }
+
+  void _spawnRipples(GestureOutput output) {
+    final Set<Note> now = output.heldNotes;
+    final Set<Note> fresh = now.difference(_prevHeld);
+    _prevHeld = <Note>{...now};
+    if (fresh.isEmpty) return;
+    final int ms = _clockMs.value;
+    for (final Note n in fresh) {
+      final FingerCursor? cursor = _cursorForNote(output, n);
+      _ripples.add(NoteRipple(
+        x: cursor?.x ?? 0.5,
+        y: cursor?.y ?? 0.5,
+        pitchClass: n.pitchClass,
+        bornMs: ms,
+      ));
+    }
+    if (_ripples.length > 60) {
+      _ripples.removeRange(0, _ripples.length - 60);
+    }
+  }
+
+  FingerCursor? _cursorForNote(GestureOutput output, Note note) {
+    for (final FingerCursor c in output.cursors) {
+      if (c.note == note) return c;
+    }
+    return null;
   }
 
   @override
@@ -76,8 +129,17 @@ class _GestureScreenState extends State<GestureScreen>
       _lastMode = settings.gestureMode;
       _mapper.reset();
     }
+    // Toggle the extra face inference on the shared camera stream to match the
+    // current setting.
+    _service.faceEnabled = settings.faceControlEnabled;
+
     final GestureOutput output = _mapper.map(frame, settings);
     _piano?.applyGesture(output);
+    if (settings.visualizerEnabled) {
+      _spawnRipples(output);
+    } else {
+      _prevHeld = <Note>{...output.heldNotes};
+    }
     setState(() {
       _frame = frame;
       _output = output;
@@ -100,7 +162,10 @@ class _GestureScreenState extends State<GestureScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     WakelockPlus.disable();
+    _ticker.dispose();
+    _clockMs.dispose();
     _sub?.cancel();
+    _faceSub?.cancel();
     _service.dispose();
     _piano?.clearGesture();
     super.dispose();
@@ -225,6 +290,15 @@ class _GestureScreenState extends State<GestureScreen>
                       painter:
                           HandOverlayPainter(frame: _frame, output: _output),
                     ),
+                    if (s.visualizerEnabled)
+                      RepaintBoundary(
+                        child: CustomPaint(
+                          painter: NoteRipplePainter(
+                            ripples: _ripples,
+                            clockMs: _clockMs,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -236,7 +310,8 @@ class _GestureScreenState extends State<GestureScreen>
           top: kToolbarHeight + 28,
           left: 12,
           right: 12,
-          child: _StatusBar(frame: _frame, output: _output, settings: s),
+          child: _StatusBar(
+              frame: _frame, output: _output, face: _face, settings: s),
         ),
         // Keyboard highlight strip (non-interactive display of what's playing).
         Positioned(
@@ -319,10 +394,14 @@ class _SheetHandle extends StatelessWidget {
 
 class _StatusBar extends StatelessWidget {
   const _StatusBar(
-      {required this.frame, required this.output, required this.settings});
+      {required this.frame,
+      required this.output,
+      required this.face,
+      required this.settings});
 
   final HandFrame frame;
   final GestureOutput output;
+  final FaceFrame face;
   final SynthSettings settings;
 
   @override
@@ -339,6 +418,14 @@ class _StatusBar extends StatelessWidget {
     }
     if (output.thereminVolume != null) {
       chips.add('vol ${(output.thereminVolume! * 100).round()}%');
+    }
+    if (settings.faceControlEnabled) {
+      if (face.present) {
+        final double v = face.signal(settings.faceSignal) ?? 0.0;
+        chips.add('face ${(v * 100).round()}%');
+      } else {
+        chips.add('no face');
+      }
     }
     return Wrap(
       spacing: 8,

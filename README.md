@@ -26,11 +26,30 @@ gestures into music.
   - **Synth** — real-time oscillators (sine / square / saw / triangle) with a
     full **ADSR** envelope and **reverb / echo** effects (via `flutter_soloud`).
   - **Piano** — pitch-shifted piano **samples** (bundled; see below).
+- **Expressive & creative controls:**
+  - **Velocity from tap speed** — in Air Piano, how fast you jab a finger down
+    sets the note's loudness (toggle in *Performance*).
+  - **Resonant low-pass filter + LFO** — sweepable cutoff & resonance, with an
+    optional LFO that auto-sweeps the cutoff.
+  - **Pinch → cutoff** — your *free* hand's pinch distance modulates the filter
+    live (a hands-in-the-air "wah").
+  - **Scale lock** — Air-Piano lanes snap to any scale + key so you're always in
+    tune (the default, C Major, matches the classic white-key layout).
+  - **Arpeggiator** — held chords/poses spread into a rhythmic sequence
+    (up / down / up-down / random, tempo & rate, gate).
+  - **Reactive light visualizer** — notes bloom as pitch-colored ripples over
+    the camera feed ("play the air, hear the light").
+  - **Face control (experimental)** — your face becomes an extra modulator:
+    open your mouth, smile, or tilt your head to sweep the filter cutoff,
+    reverb, or volume. Runs ML Kit face detection on the *same* camera stream
+    as the hand tracker (no second camera), off by default.
 - **Synth controls in-context** — a drag-up **bottom sheet** on the gesture
-  screen exposes engine, waveform, ADSR, effects and octave without leaving the
-  camera; a keyboard strip highlights the notes you're playing.
+  screen exposes engine, waveform, ADSR, effects, filter/LFO, scale, arpeggiator,
+  octave and visuals without leaving the camera; a keyboard strip highlights the
+  notes you're playing.
 - **Live, persisted settings** — engine, waveform, ADSR, octave shift, effects,
-  gesture mode & sensitivity, keyboard range, theremin scale.
+  filter/LFO, velocity, scale + key, arpeggiator, visualizer, gesture mode &
+  sensitivity, keyboard range, theremin scale.
 
 ## Tech stack
 
@@ -39,6 +58,7 @@ gestures into music.
 | Audio (synth+sample) | `flutter_soloud`   |
 | Camera stream        | `camera`           |
 | Hand landmarks       | `hand_landmarker`  |
+| Face landmarks       | `google_mlkit_face_detection` |
 | Permissions          | `permission_handler` |
 | State                | `provider`         |
 | Persistence          | `shared_preferences` |

@@ -1,3 +1,18 @@
+import 'face_data.dart';
+
+export 'face_data.dart' show FaceSignal, FaceSignalLabel;
+
+/// Which synth parameter a face expression modulates.
+enum FaceTarget { cutoff, reverb, volume }
+
+extension FaceTargetLabel on FaceTarget {
+  String get label => switch (this) {
+        FaceTarget.cutoff => 'Filter cutoff',
+        FaceTarget.reverb => 'Reverb',
+        FaceTarget.volume => 'Volume',
+      };
+}
+
 /// Which sound source the audio engine uses to render notes.
 enum SoundEngine {
   /// Real-time oscillator synthesis (SoLoud `loadWaveform`).
@@ -82,6 +97,38 @@ class Adsr {
   }
 }
 
+/// Arpeggiator note-step patterns.
+enum ArpPattern { up, down, updown, random }
+
+extension ArpPatternLabel on ArpPattern {
+  String get label => switch (this) {
+        ArpPattern.up => 'Up',
+        ArpPattern.down => 'Down',
+        ArpPattern.updown => 'Up/Down',
+        ArpPattern.random => 'Random',
+      };
+}
+
+/// Arpeggiator step rate as a musical note division.
+enum ArpRate { quarter, eighth, eighthTriplet, sixteenth }
+
+extension ArpRateInfo on ArpRate {
+  String get label => switch (this) {
+        ArpRate.quarter => '1/4',
+        ArpRate.eighth => '1/8',
+        ArpRate.eighthTriplet => '1/8T',
+        ArpRate.sixteenth => '1/16',
+      };
+
+  /// Fraction of a quarter-note beat that one arp step lasts.
+  double get beatFraction => switch (this) {
+        ArpRate.quarter => 1.0,
+        ArpRate.eighth => 0.5,
+        ArpRate.eighthTriplet => 1.0 / 3.0,
+        ArpRate.sixteenth => 0.25,
+      };
+}
+
 /// All user-tunable settings, persisted between launches.
 class SynthSettings {
   const SynthSettings({
@@ -98,6 +145,26 @@ class SynthSettings {
     this.startOctave = 4,
     this.octaves = 2,
     this.cameraQuarterTurns = 1,
+    // -- New expressive / creative features (all default to prior behavior) --
+    this.velocityEnabled = true,
+    this.filterEnabled = false,
+    this.filterCutoff = 1.0,
+    this.filterResonance = 0.1,
+    this.lfoEnabled = false,
+    this.lfoRateHz = 2.0,
+    this.lfoDepth = 0.0,
+    this.pinchModEnabled = false,
+    this.scaleName = 'Major',
+    this.keyRoot = 0,
+    this.arpEnabled = false,
+    this.arpPattern = ArpPattern.up,
+    this.arpRate = ArpRate.eighth,
+    this.bpm = 120.0,
+    this.arpGate = 0.5,
+    this.visualizerEnabled = true,
+    this.faceControlEnabled = false,
+    this.faceSignal = FaceSignal.mouthOpen,
+    this.faceTarget = FaceTarget.cutoff,
   });
 
   final SoundEngine engine;
@@ -135,6 +202,46 @@ class SynthSettings {
   /// rotate button on the gesture screen.
   final int cameraQuarterTurns;
 
+  /// When true, Air-Piano note loudness follows how fast the finger taps down.
+  final bool velocityEnabled;
+
+  /// Resonant low-pass filter enable + normalized cutoff (0=dark, 1=open) and
+  /// resonance (0..1, mapped to the filter's Q range).
+  final bool filterEnabled;
+  final double filterCutoff;
+  final double filterResonance;
+
+  /// Low-frequency oscillator that sweeps the filter cutoff.
+  final bool lfoEnabled;
+  final double lfoRateHz;
+  final double lfoDepth;
+
+  /// When true, the non-playing hand's pinch distance modulates the filter
+  /// cutoff live (a hands-in-the-air "wah").
+  final bool pinchModEnabled;
+
+  /// Scale + key root (0=C..11=B) that Air-Piano lanes are locked to.
+  /// The defaults ('Major' / C) reproduce the original white-keys layout.
+  final String scaleName;
+  final int keyRoot;
+
+  /// Arpeggiator: spread held chords/poses into a rhythmic sequence.
+  final bool arpEnabled;
+  final ArpPattern arpPattern;
+  final ArpRate arpRate;
+  final double bpm;
+
+  /// Fraction of each step the arp note sounds for (0..1).
+  final double arpGate;
+
+  /// Reactive note-ripple visualizer on the gesture screen.
+  final bool visualizerEnabled;
+
+  /// Face-expression modulation: drive [faceTarget] from [faceSignal].
+  final bool faceControlEnabled;
+  final FaceSignal faceSignal;
+  final FaceTarget faceTarget;
+
   SynthSettings copyWith({
     SoundEngine? engine,
     SynthWave? wave,
@@ -149,6 +256,25 @@ class SynthSettings {
     int? startOctave,
     int? octaves,
     int? cameraQuarterTurns,
+    bool? velocityEnabled,
+    bool? filterEnabled,
+    double? filterCutoff,
+    double? filterResonance,
+    bool? lfoEnabled,
+    double? lfoRateHz,
+    double? lfoDepth,
+    bool? pinchModEnabled,
+    String? scaleName,
+    int? keyRoot,
+    bool? arpEnabled,
+    ArpPattern? arpPattern,
+    ArpRate? arpRate,
+    double? bpm,
+    double? arpGate,
+    bool? visualizerEnabled,
+    bool? faceControlEnabled,
+    FaceSignal? faceSignal,
+    FaceTarget? faceTarget,
   }) {
     return SynthSettings(
       engine: engine ?? this.engine,
@@ -164,6 +290,25 @@ class SynthSettings {
       startOctave: startOctave ?? this.startOctave,
       octaves: octaves ?? this.octaves,
       cameraQuarterTurns: cameraQuarterTurns ?? this.cameraQuarterTurns,
+      velocityEnabled: velocityEnabled ?? this.velocityEnabled,
+      filterEnabled: filterEnabled ?? this.filterEnabled,
+      filterCutoff: filterCutoff ?? this.filterCutoff,
+      filterResonance: filterResonance ?? this.filterResonance,
+      lfoEnabled: lfoEnabled ?? this.lfoEnabled,
+      lfoRateHz: lfoRateHz ?? this.lfoRateHz,
+      lfoDepth: lfoDepth ?? this.lfoDepth,
+      pinchModEnabled: pinchModEnabled ?? this.pinchModEnabled,
+      scaleName: scaleName ?? this.scaleName,
+      keyRoot: keyRoot ?? this.keyRoot,
+      arpEnabled: arpEnabled ?? this.arpEnabled,
+      arpPattern: arpPattern ?? this.arpPattern,
+      arpRate: arpRate ?? this.arpRate,
+      bpm: bpm ?? this.bpm,
+      arpGate: arpGate ?? this.arpGate,
+      visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
+      faceControlEnabled: faceControlEnabled ?? this.faceControlEnabled,
+      faceSignal: faceSignal ?? this.faceSignal,
+      faceTarget: faceTarget ?? this.faceTarget,
     );
   }
 
@@ -184,6 +329,25 @@ class SynthSettings {
         'startOctave': startOctave,
         'octaves': octaves,
         'cameraQuarterTurns': cameraQuarterTurns,
+        'velocityEnabled': velocityEnabled,
+        'filterEnabled': filterEnabled,
+        'filterCutoff': filterCutoff,
+        'filterResonance': filterResonance,
+        'lfoEnabled': lfoEnabled,
+        'lfoRateHz': lfoRateHz,
+        'lfoDepth': lfoDepth,
+        'pinchModEnabled': pinchModEnabled,
+        'scaleName': scaleName,
+        'keyRoot': keyRoot,
+        'arpEnabled': arpEnabled,
+        'arpPattern': arpPattern.name,
+        'arpRate': arpRate.name,
+        'bpm': bpm,
+        'arpGate': arpGate,
+        'visualizerEnabled': visualizerEnabled,
+        'faceControlEnabled': faceControlEnabled,
+        'faceSignal': faceSignal.name,
+        'faceTarget': faceTarget.name,
       };
 
   factory SynthSettings.fromJson(Map<String, dynamic> json) {
@@ -218,6 +382,29 @@ class SynthSettings {
       startOctave: (json['startOctave'] as num?)?.toInt() ?? 4,
       octaves: (json['octaves'] as num?)?.toInt() ?? 2,
       cameraQuarterTurns: (json['cameraQuarterTurns'] as num?)?.toInt() ?? 1,
+      velocityEnabled: json['velocityEnabled'] as bool? ?? true,
+      filterEnabled: json['filterEnabled'] as bool? ?? false,
+      filterCutoff: (json['filterCutoff'] as num?)?.toDouble() ?? 1.0,
+      filterResonance: (json['filterResonance'] as num?)?.toDouble() ?? 0.1,
+      lfoEnabled: json['lfoEnabled'] as bool? ?? false,
+      lfoRateHz: (json['lfoRateHz'] as num?)?.toDouble() ?? 2.0,
+      lfoDepth: (json['lfoDepth'] as num?)?.toDouble() ?? 0.0,
+      pinchModEnabled: json['pinchModEnabled'] as bool? ?? false,
+      scaleName: json['scaleName'] as String? ?? 'Major',
+      keyRoot: (json['keyRoot'] as num?)?.toInt() ?? 0,
+      arpEnabled: json['arpEnabled'] as bool? ?? false,
+      arpPattern: pick(ArpPattern.up,
+          () => ArpPattern.values.byName(json['arpPattern'] as String)),
+      arpRate: pick(ArpRate.eighth,
+          () => ArpRate.values.byName(json['arpRate'] as String)),
+      bpm: (json['bpm'] as num?)?.toDouble() ?? 120.0,
+      arpGate: (json['arpGate'] as num?)?.toDouble() ?? 0.5,
+      visualizerEnabled: json['visualizerEnabled'] as bool? ?? true,
+      faceControlEnabled: json['faceControlEnabled'] as bool? ?? false,
+      faceSignal: pick(FaceSignal.mouthOpen,
+          () => FaceSignal.values.byName(json['faceSignal'] as String)),
+      faceTarget: pick(FaceTarget.cutoff,
+          () => FaceTarget.values.byName(json['faceTarget'] as String)),
     );
   }
 }
