@@ -24,7 +24,13 @@ dependencies:
 
   # ML Kit face detection (Android) for optional face-expression modulation.
   # Shares the same camera image stream as the hand tracker.
-  google_mlkit_face_detection: ^0.14.0
+  #
+  # Pinned to 0.13.2 (the last Java-based release, which pulls
+  # google_mlkit_commons 0.11.x). The 0.14.0/commons-0.12.0 Kotlin rewrite of
+  # the native InputImageConverter regressed and threw a NullPointerException
+  # on every frame, so face detection never ran. Do not bump without verifying
+  # detection works on-device again.
+  google_mlkit_face_detection: 0.13.2
 
   # Runtime permissions (camera).
   permission_handler: ^11.3.1
