@@ -49,6 +49,9 @@ class AudioEngine {
   bool _reverbActive = false;
   bool _echoActive = false;
 
+  /// When non-null, face modulation is live-overriding the reverb wet amount.
+  double? _liveReverbWet;
+
   // -- Resonant low-pass filter state --
   bool _biquadActive = false;
 
@@ -135,6 +138,30 @@ class AudioEngine {
     _liveCutoffNorm = null;
     if (!_initialized) return;
     _applyFilter();
+  }
+
+  /// Live-sets the reverb wet amount without persisting it (used by face
+  /// modulation). Activates reverb on demand.
+  void setLiveReverb(double wet01) {
+    _liveReverbWet = wet01.clamp(0.0, 1.0);
+    if (!_initialized) return;
+    try {
+      final filters = _soloud.filters;
+      if (!_reverbActive) {
+        filters.freeverbFilter.activate();
+        _reverbActive = true;
+        filters.freeverbFilter.roomSize.value = 0.6;
+      }
+      filters.freeverbFilter.wet.value = _liveReverbWet!;
+    } catch (_) {}
+  }
+
+  /// Ends live reverb control; restores the persisted reverb setting.
+  void clearLiveReverb() {
+    if (_liveReverbWet == null) return;
+    _liveReverbWet = null;
+    if (!_initialized) return;
+    _applyEffects();
   }
 
   /// The effective MIDI number after applying the octave shift.

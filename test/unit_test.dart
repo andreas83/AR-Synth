@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:ar_synth/models/face_data.dart';
 import 'package:ar_synth/models/hand_data.dart';
 import 'package:ar_synth/models/music.dart';
 import 'package:ar_synth/models/synth_settings.dart';
@@ -187,6 +188,31 @@ void main() {
       expect(hz(0.0), closeTo(80.0, 1e-6));
       expect(hz(1.0), lessThan(16000.0));
       expect(hz(1.0), greaterThan(hz(0.5)));
+    });
+  });
+
+  group('face signal mapping', () {
+    test('direct signals pass through, clamped to 0..1', () {
+      const FaceFrame f = FaceFrame(
+          present: true, mouthOpen: 0.5, smile: 0.8, eyeOpen: 0.3);
+      expect(faceSignalValue(f, FaceSignal.mouthOpen), 0.5);
+      expect(faceSignalValue(f, FaceSignal.smile), 0.8);
+      expect(faceSignalValue(f, FaceSignal.eyeOpen), 0.3);
+    });
+
+    test('head tilt is centered at 0.5 and spans the bipolar range', () {
+      expect(faceSignalValue(const FaceFrame(present: true, tilt: 0.0),
+          FaceSignal.headTilt), 0.5);
+      expect(faceSignalValue(const FaceFrame(present: true, tilt: -1.0),
+          FaceSignal.headTilt), 0.0);
+      expect(faceSignalValue(const FaceFrame(present: true, tilt: 1.0),
+          FaceSignal.headTilt), 1.0);
+    });
+
+    test('signal() returns null when no face is present', () {
+      expect(const FaceFrame.empty().signal(FaceSignal.mouthOpen), isNull);
+      expect(const FaceFrame(present: true, mouthOpen: 0.4)
+          .signal(FaceSignal.mouthOpen), 0.4);
     });
   });
 }

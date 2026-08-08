@@ -22,6 +22,10 @@ dependencies:
   # MediaPipe Hand Landmarker (Android, native JNI bridge, model bundled).
   hand_landmarker: ^2.1.2
 
+  # ML Kit face detection (Android) for optional face-expression modulation.
+  # Shares the same camera image stream as the hand tracker.
+  google_mlkit_face_detection: ^0.14.0
+
   # Runtime permissions (camera).
   permission_handler: ^11.3.1
 

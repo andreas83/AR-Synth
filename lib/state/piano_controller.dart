@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/face_data.dart';
 import '../models/music.dart';
+import '../models/synth_settings.dart';
 import '../services/audio_engine.dart';
 import '../services/gesture_mapper.dart';
 import 'arpeggiator.dart';
@@ -26,6 +28,7 @@ class PianoController extends ChangeNotifier {
   final Set<Note> _gestureHeld = <Note>{};
   bool _liveVolumeAdjusted = false;
   bool _cutoffAdjusted = false;
+  bool _faceAdjusted = false;
 
   /// All notes currently sounding (touch ∪ gesture ∪ arp), for highlighting.
   Set<Note> get activeNotes {
@@ -121,6 +124,49 @@ class PianoController extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
+  /// Applies one frame of face-expression modulation to the chosen target.
+  /// Hand-driven live controls take precedence over the face for shared targets
+  /// (pinch > face on the cutoff; theremin > face on the volume).
+  void applyFaceModulation(FaceFrame frame) {
+    final SynthSettings s = _settings.settings;
+    if (!s.faceControlEnabled || !frame.present) {
+      if (_faceAdjusted) {
+        _clearFaceTarget(s.faceTarget);
+        _faceAdjusted = false;
+      }
+      return;
+    }
+    final double? value = frame.signal(s.faceSignal);
+    if (value == null) return;
+
+    switch (s.faceTarget) {
+      case FaceTarget.cutoff:
+        if (_cutoffAdjusted) return; // pinch (hand) wins
+        _audio.setLiveCutoff(value);
+        _faceAdjusted = true;
+      case FaceTarget.reverb:
+        _audio.setLiveReverb(value);
+        _faceAdjusted = true;
+      case FaceTarget.volume:
+        if (_liveVolumeAdjusted) return; // theremin wins
+        _audio.setLiveMasterVolume(s.masterVolume * (0.15 + 0.85 * value));
+        _faceAdjusted = true;
+    }
+  }
+
+  void _clearFaceTarget(FaceTarget target) {
+    switch (target) {
+      case FaceTarget.cutoff:
+        if (!_cutoffAdjusted) _audio.clearLiveCutoff();
+      case FaceTarget.reverb:
+        _audio.clearLiveReverb();
+      case FaceTarget.volume:
+        if (!_liveVolumeAdjusted) {
+          _audio.setLiveMasterVolume(_settings.settings.masterVolume);
+        }
+    }
+  }
+
   /// Clears all gesture notes (e.g. when leaving the gesture screen).
   void clearGesture() {
     _arp.stop();
@@ -138,6 +184,10 @@ class PianoController extends ChangeNotifier {
     if (_cutoffAdjusted) {
       _audio.clearLiveCutoff();
       _cutoffAdjusted = false;
+    }
+    if (_faceAdjusted) {
+      _clearFaceTarget(_settings.settings.faceTarget);
+      _faceAdjusted = false;
     }
   }
 

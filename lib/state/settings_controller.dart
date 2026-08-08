@@ -103,4 +103,12 @@ class SettingsController extends ChangeNotifier {
   // Visualizer ---------------------------------------------------------------
   void setVisualizerEnabled(bool v) =>
       _update(_settings.copyWith(visualizerEnabled: v));
+
+  // Face control -------------------------------------------------------------
+  void setFaceControlEnabled(bool v) =>
+      _update(_settings.copyWith(faceControlEnabled: v));
+  void setFaceSignal(FaceSignal s) =>
+      _update(_settings.copyWith(faceSignal: s));
+  void setFaceTarget(FaceTarget t) =>
+      _update(_settings.copyWith(faceTarget: t));
 }

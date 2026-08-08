@@ -39,6 +39,10 @@ gestures into music.
     (up / down / up-down / random, tempo & rate, gate).
   - **Reactive light visualizer** — notes bloom as pitch-colored ripples over
     the camera feed ("play the air, hear the light").
+  - **Face control (experimental)** — your face becomes an extra modulator:
+    open your mouth, smile, or tilt your head to sweep the filter cutoff,
+    reverb, or volume. Runs ML Kit face detection on the *same* camera stream
+    as the hand tracker (no second camera), off by default.
 - **Synth controls in-context** — a drag-up **bottom sheet** on the gesture
   screen exposes engine, waveform, ADSR, effects, filter/LFO, scale, arpeggiator,
   octave and visuals without leaving the camera; a keyboard strip highlights the
@@ -54,6 +58,7 @@ gestures into music.
 | Audio (synth+sample) | `flutter_soloud`   |
 | Camera stream        | `camera`           |
 | Hand landmarks       | `hand_landmarker`  |
+| Face landmarks       | `google_mlkit_face_detection` |
 | Permissions          | `permission_handler` |
 | State                | `provider`         |
 | Persistence          | `shared_preferences` |

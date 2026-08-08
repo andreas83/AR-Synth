@@ -179,6 +179,42 @@ class SynthControls extends StatelessWidget {
           ],
 
           const Divider(height: 32),
+          _label('Face control (experimental)'),
+          _switchRow('Enable face modulation', s.faceControlEnabled,
+              c.setFaceControlEnabled),
+          if (s.faceControlEnabled) ...<Widget>[
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: _dropdown<FaceSignal>(
+                    'Expression',
+                    s.faceSignal,
+                    FaceSignal.values,
+                    (FaceSignal v) => v.label,
+                    c.setFaceSignal,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _dropdown<FaceTarget>(
+                    'Controls',
+                    s.faceTarget,
+                    FaceTarget.values,
+                    (FaceTarget v) => v.label,
+                    c.setFaceTarget,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Uses the front camera; open your mouth / smile / tilt your head '
+              'to sweep the chosen parameter.',
+              style: TextStyle(fontSize: 11, color: Colors.white54),
+            ),
+          ],
+
+          const Divider(height: 32),
           _label('Visuals'),
           _switchRow('Note-ripple visualizer', s.visualizerEnabled,
               c.setVisualizerEnabled),

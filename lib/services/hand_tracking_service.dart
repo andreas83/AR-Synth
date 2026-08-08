@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:hand_landmarker/hand_landmarker.dart' as hlm;
 import 'package:permission_handler/permission_handler.dart';
 
+import '../models/face_data.dart';
 import '../models/hand_data.dart';
+import 'face_tracker.dart';
 
 /// Lifecycle / readiness of the camera + hand tracker.
 enum TrackingStatus { idle, starting, running, denied, error, unsupported }
@@ -28,9 +30,16 @@ class HandTrackingService {
 
   CameraController? _controller;
   hlm.HandLandmarkerPlugin? _plugin;
+  FaceTracker? _faceTracker;
+
+  /// When true, camera frames are also run through face detection. Toggled by
+  /// the UI so the extra native inference only runs when the feature is on.
+  bool faceEnabled = false;
 
   final StreamController<HandFrame> _frames =
       StreamController<HandFrame>.broadcast();
+  final StreamController<FaceFrame> _faceFrames =
+      StreamController<FaceFrame>.broadcast();
 
   TrackingStatus _status = TrackingStatus.idle;
   String? _error;
@@ -42,6 +51,9 @@ class HandTrackingService {
 
   /// Normalized hand frames (empty list of hands until the first detection).
   Stream<HandFrame> get frames => _frames.stream;
+
+  /// Normalized face-expression frames (only emitted while [faceEnabled]).
+  Stream<FaceFrame> get faces => _faceFrames.stream;
 
   /// The live controller, for building a [CameraPreview]. Null until running.
   CameraController? get controller => _controller;
@@ -109,6 +121,7 @@ class HandTrackingService {
 
       // 4. MediaPipe plugin. GPU delegate for speed, CPU fallback on failure.
       _plugin = _createPlugin(numHands);
+      _faceTracker ??= FaceTracker();
 
       // 5. Run detection on the camera stream (throttled + re-entrancy guarded).
       await controller.startImageStream(_processImage);
@@ -130,6 +143,15 @@ class HandTrackingService {
     if (now.difference(_lastProcess) < minFrameInterval) return;
     final hlm.HandLandmarkerPlugin? plugin = _plugin;
     if (plugin == null) return;
+
+    // Face detection shares this frame but runs on its own async throttle, so
+    // it never blocks the synchronous hand detect below. Kick it off first
+    // (it copies the bytes it needs synchronously before awaiting).
+    if (faceEnabled) {
+      _faceTracker?.process(image, _sensorOrientation, (FaceFrame f) {
+        if (!_faceFrames.isClosed) _faceFrames.add(f);
+      });
+    }
 
     _processing = true;
     _lastProcess = now;
@@ -210,6 +232,9 @@ class HandTrackingService {
 
   Future<void> dispose() async {
     await _teardown();
+    await _faceTracker?.dispose();
+    _faceTracker = null;
     await _frames.close();
+    await _faceFrames.close();
   }
 }

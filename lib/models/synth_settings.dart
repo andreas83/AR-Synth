@@ -1,3 +1,18 @@
+import 'face_data.dart';
+
+export 'face_data.dart' show FaceSignal, FaceSignalLabel;
+
+/// Which synth parameter a face expression modulates.
+enum FaceTarget { cutoff, reverb, volume }
+
+extension FaceTargetLabel on FaceTarget {
+  String get label => switch (this) {
+        FaceTarget.cutoff => 'Filter cutoff',
+        FaceTarget.reverb => 'Reverb',
+        FaceTarget.volume => 'Volume',
+      };
+}
+
 /// Which sound source the audio engine uses to render notes.
 enum SoundEngine {
   /// Real-time oscillator synthesis (SoLoud `loadWaveform`).
@@ -147,6 +162,9 @@ class SynthSettings {
     this.bpm = 120.0,
     this.arpGate = 0.5,
     this.visualizerEnabled = true,
+    this.faceControlEnabled = false,
+    this.faceSignal = FaceSignal.mouthOpen,
+    this.faceTarget = FaceTarget.cutoff,
   });
 
   final SoundEngine engine;
@@ -219,6 +237,11 @@ class SynthSettings {
   /// Reactive note-ripple visualizer on the gesture screen.
   final bool visualizerEnabled;
 
+  /// Face-expression modulation: drive [faceTarget] from [faceSignal].
+  final bool faceControlEnabled;
+  final FaceSignal faceSignal;
+  final FaceTarget faceTarget;
+
   SynthSettings copyWith({
     SoundEngine? engine,
     SynthWave? wave,
@@ -249,6 +272,9 @@ class SynthSettings {
     double? bpm,
     double? arpGate,
     bool? visualizerEnabled,
+    bool? faceControlEnabled,
+    FaceSignal? faceSignal,
+    FaceTarget? faceTarget,
   }) {
     return SynthSettings(
       engine: engine ?? this.engine,
@@ -280,6 +306,9 @@ class SynthSettings {
       bpm: bpm ?? this.bpm,
       arpGate: arpGate ?? this.arpGate,
       visualizerEnabled: visualizerEnabled ?? this.visualizerEnabled,
+      faceControlEnabled: faceControlEnabled ?? this.faceControlEnabled,
+      faceSignal: faceSignal ?? this.faceSignal,
+      faceTarget: faceTarget ?? this.faceTarget,
     );
   }
 
@@ -316,6 +345,9 @@ class SynthSettings {
         'bpm': bpm,
         'arpGate': arpGate,
         'visualizerEnabled': visualizerEnabled,
+        'faceControlEnabled': faceControlEnabled,
+        'faceSignal': faceSignal.name,
+        'faceTarget': faceTarget.name,
       };
 
   factory SynthSettings.fromJson(Map<String, dynamic> json) {
@@ -368,6 +400,11 @@ class SynthSettings {
       bpm: (json['bpm'] as num?)?.toDouble() ?? 120.0,
       arpGate: (json['arpGate'] as num?)?.toDouble() ?? 0.5,
       visualizerEnabled: json['visualizerEnabled'] as bool? ?? true,
+      faceControlEnabled: json['faceControlEnabled'] as bool? ?? false,
+      faceSignal: pick(FaceSignal.mouthOpen,
+          () => FaceSignal.values.byName(json['faceSignal'] as String)),
+      faceTarget: pick(FaceTarget.cutoff,
+          () => FaceTarget.values.byName(json['faceTarget'] as String)),
     );
   }
 }
