@@ -45,6 +45,10 @@ unlinked_spec.ds
 *.jks
 *.keystore
 
+# Exception: deliberately shared (non-production) signing key — see
+# android/.gitignore for why.
+!android/app/arsynth-shared.jks
+
 # Symbolication / obfuscation
 app.*.symbols
 app.*.map.json

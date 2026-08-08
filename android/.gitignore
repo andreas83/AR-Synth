@@ -12,3 +12,8 @@ GeneratedPluginRegistrant.java
 key.properties
 **/*.keystore
 **/*.jks
+
+# Exception: arsynth-shared.jks is a deliberately public, shared signing key so
+# that every CI build has the SAME signature and app updates can install over
+# each other. It is NOT a production key — never use it to publish to Play.
+!app/arsynth-shared.jks

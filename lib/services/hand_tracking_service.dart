@@ -52,6 +52,13 @@ class HandTrackingService {
   /// Whether coordinates are mirrored to match a front-camera selfie preview.
   bool get mirrored => _mirror;
 
+  /// Sensor mount orientation in degrees (0/90/180/270). Used to rotate the
+  /// preview + overlay upright when the app is locked to portrait.
+  int get sensorOrientation => _sensorOrientation;
+
+  /// True when the active camera is front-facing.
+  bool get isFrontCamera => _mirror;
+
   bool get isRunning => _status == TrackingStatus.running;
 
   /// Requests permission, opens the front camera and starts detection.

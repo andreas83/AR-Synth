@@ -198,6 +198,12 @@ class _GestureScreenState extends State<GestureScreen>
         backgroundColor: Colors.black.withValues(alpha: 0.25),
         title: const Text('Gesture'),
         actions: <Widget>[
+          // Rotate the camera preview to upright (device-dependent; persisted).
+          IconButton(
+            icon: const Icon(Icons.screen_rotation),
+            tooltip: 'Rotate preview',
+            onPressed: settings.rotateCameraPreview,
+          ),
           // Quick gesture-mode switch.
           PopupMenuButton<GestureMode>(
             icon: const Icon(Icons.back_hand),
@@ -243,10 +249,15 @@ class _GestureScreenState extends State<GestureScreen>
 
     return Stack(
       children: <Widget>[
-        // Camera preview + hand overlay. In portrait the sensor is landscape,
-        // so we invert the aspect ratio to avoid a stretched/sideways preview;
-        // the overlay is a sibling in the same box, so normalized landmark
-        // coordinates line up with what's shown.
+        // Camera preview + hand overlay.
+        //
+        // IMPORTANT: only the PREVIEW is rotated, never the overlay.
+        // hand_landmarker's detect() rotates the frame by the sensor
+        // orientation *before* running inference, so the landmarks it returns
+        // are already in upright, display-oriented space. The raw preview
+        // texture is not, so it alone needs the rotation to match. Rotating the
+        // overlay too would re-rotate coordinates that are already correct and
+        // knock the skeleton off the hand.
         Positioned.fill(
           child: ColoredBox(
             color: Colors.black,
@@ -256,7 +267,10 @@ class _GestureScreenState extends State<GestureScreen>
                 child: Stack(
                   fit: StackFit.expand,
                   children: <Widget>[
-                    CameraPreview(controller),
+                    RotatedBox(
+                      quarterTurns: s.cameraQuarterTurns % 4,
+                      child: controller.buildPreview(),
+                    ),
                     CustomPaint(
                       painter:
                           HandOverlayPainter(frame: _frame, output: _output),

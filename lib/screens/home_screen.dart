@@ -1,12 +1,64 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
+import '../services/update_service.dart';
 import '../theme.dart';
+import '../widgets/update_dialog.dart';
 import 'gesture_screen.dart';
 import 'settings_screen.dart';
 
-/// Landing screen with navigation to the three main experiences.
-class HomeScreen extends StatelessWidget {
+/// Landing screen: entry points plus the in-app update check.
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final UpdateService _updates = UpdateService();
+  String _version = '';
+  bool _checking = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+    // Check silently on launch; only interrupt if there's actually an update.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _check(silent: true));
+  }
+
+  @override
+  void dispose() {
+    _updates.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final PackageInfo info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _version = info.version);
+    } catch (_) {
+      // Version is cosmetic; ignore failures.
+    }
+  }
+
+  Future<void> _check({bool silent = false}) async {
+    if (_checking) return;
+    setState(() => _checking = true);
+    final UpdateInfo? update = await _updates.checkForUpdate();
+    if (!mounted) return;
+    setState(() => _checking = false);
+
+    if (update != null) {
+      await UpdateDialog.show(context,
+          update: update, service: _updates);
+    } else if (!silent) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("You're on the latest version.")),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +105,24 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              TextButton.icon(
+                onPressed: _checking ? null : () => _check(),
+                icon: _checking
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.system_update, size: 18),
+                label: Text(
+                  _checking
+                      ? 'Checking…'
+                      : _version.isEmpty
+                          ? 'Check for updates'
+                          : 'Version $_version · check for updates',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
             ],
           ),
         ),
