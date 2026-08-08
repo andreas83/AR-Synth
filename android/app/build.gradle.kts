@@ -45,6 +45,17 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("shared")
+
+            // Flutter/AGP enable R8 code shrinking for release by default. R8
+            // obfuscated ML Kit's reflection-based vision classes, so building
+            // an InputImage threw NullPointerException on every frame and face
+            // detection never ran. This app is not size-constrained (native
+            // MediaPipe / ML Kit libraries dominate the APK), so disable
+            // shrinking to keep those classes intact. If re-enabling later, add
+            // ML Kit + MediaPipe -keep rules to android/app/proguard-rules.pro
+            // first and verify face detection still works on-device.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
