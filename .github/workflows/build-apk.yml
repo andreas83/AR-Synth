@@ -58,9 +58,6 @@ jobs:
       - name: Run tests
         run: flutter test
 
-      - name: Build debug APK
-        run: flutter build apk --debug
-
       # Signed with the committed shared keystore (android/app/arsynth-shared.jks)
       # so every build has the same signature and updates install over each other.
       - name: Build release APK
@@ -81,7 +78,6 @@ jobs:
           name: ar-synth-apks
           if-no-files-found: error
           path: |
-            build/app/outputs/flutter-apk/app-debug.apk
             dist/ar-synth-${{ steps.version.outputs.name }}.apk
 
       # Publish a Release on the default branch only. The in-app updater polls
