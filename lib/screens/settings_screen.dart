@@ -7,6 +7,7 @@ import '../models/synth_settings.dart';
 import '../services/update_service.dart';
 import '../state/settings_controller.dart';
 import '../widgets/synth_controls.dart';
+import '../widgets/ui_kit.dart';
 import '../widgets/update_dialog.dart';
 
 /// Full settings page: gesture mode + keyboard range on top of the shared
@@ -24,9 +25,8 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         children: <Widget>[
           const Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text('Gesture mode',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            padding: EdgeInsets.fromLTRB(16, 14, 16, 0),
+            child: SectionHeader('Gesture mode'),
           ),
           RadioGroup<GestureMode>(
             groupValue: s.gestureMode,
@@ -86,13 +86,9 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
           const Divider(height: 8),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Text('Keyboard range',
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                    color: Colors.white.withValues(alpha: 0.9))),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: SectionHeader('Keyboard range'),
           ),
           ListTile(
             title: const Text('Start octave'),
@@ -178,13 +174,9 @@ class _AboutSectionState extends State<_AboutSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: Text('About',
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  color: Colors.white.withValues(alpha: 0.9))),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: SectionHeader('About'),
         ),
         ListTile(
           title: const Text('Check for updates'),

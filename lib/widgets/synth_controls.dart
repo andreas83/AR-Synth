@@ -5,6 +5,8 @@ import '../models/music.dart';
 import '../models/synth_settings.dart';
 import '../services/audio_engine.dart';
 import '../state/settings_controller.dart';
+import '../theme.dart';
+import 'ui_kit.dart';
 
 /// Compact synth control panel: engine, waveform, octave, ADSR and effects.
 /// Reads/writes through [SettingsController] so changes are live + persisted.
@@ -223,46 +225,59 @@ class SynthControls extends StatelessWidget {
     );
   }
 
-  Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
-      );
+  Widget _label(String text) => SectionHeader(text);
 
   Widget _slider(String label, double value, ValueChanged<double> onChanged,
       {double min = 0.0, double max = 1.0}) {
-    return Row(
-      children: <Widget>[
-        SizedBox(
-          width: 110,
-          child: Text(label, style: const TextStyle(fontSize: 13)),
-        ),
-        Expanded(
-          child: Slider(
-            value: value.clamp(min, max),
-            min: min,
-            max: max,
-            onChanged: onChanged,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: <Widget>[
+          SizedBox(
+            width: 104,
+            child: Text(label,
+                style:
+                    const TextStyle(fontSize: 13, color: AppTheme.textMed)),
           ),
-        ),
-        SizedBox(
-          width: 44,
-          child: Text(value.toStringAsFixed(2),
+          Expanded(
+            child: Slider(
+              value: value.clamp(min, max),
+              min: min,
+              max: max,
+              onChanged: onChanged,
+            ),
+          ),
+          Container(
+            width: 48,
+            alignment: Alignment.centerRight,
+            child: Text(
+              value.toStringAsFixed(2),
               textAlign: TextAlign.right,
-              style: const TextStyle(fontSize: 12, color: Colors.white70)),
-        ),
-      ],
+              style: const TextStyle(
+                fontSize: 12,
+                fontFeatures: <FontFeature>[FontFeature.tabularFigures()],
+                color: AppTheme.textHi,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _switchRow(String label, bool value, ValueChanged<bool> onChanged) {
-    return Row(
-      children: <Widget>[
-        Expanded(
-          child: Text(label, style: const TextStyle(fontSize: 13)),
-        ),
-        Switch(value: value, onChanged: onChanged),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(fontSize: 14, color: AppTheme.textHi)),
+          ),
+          Switch(value: value, onChanged: onChanged),
+        ],
+      ),
     );
   }
 

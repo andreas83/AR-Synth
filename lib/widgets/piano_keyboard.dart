@@ -159,30 +159,52 @@ class _KeyFace extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color base = isBlack ? const Color(0xFF15171C) : const Color(0xFFF3F4F6);
-    final Color pressedColor =
-        isBlack ? AppTheme.secondary : AppTheme.primary;
-    final Color color = pressed ? pressedColor : base;
+    final Color accent = isBlack ? AppTheme.secondary : AppTheme.primary;
 
-    return Container(
+    // Subtle top→bottom shading gives the keys depth; pressed keys light up in
+    // the brand accent with a matching glow.
+    final Gradient gradient = pressed
+        ? LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[accent, Color.lerp(accent, Colors.black, 0.25)!],
+          )
+        : isBlack
+            ? const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[Color(0xFF262B36), Color(0xFF12141A)],
+              )
+            : const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[Color(0xFFFCFDFF), Color(0xFFDDE1EA)],
+              );
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 90),
       width: width,
       height: height,
       decoration: BoxDecoration(
-        color: color,
-        border: Border.all(color: Colors.black.withValues(alpha: 0.55), width: 0.5),
+        gradient: gradient,
+        border: Border.all(
+            color: Colors.black.withValues(alpha: 0.5), width: 0.5),
         borderRadius: BorderRadius.vertical(
-          bottom: Radius.circular(isBlack ? 4 : 6),
+          bottom: Radius.circular(isBlack ? 5 : 7),
         ),
+        boxShadow: pressed
+            ? AppTheme.glow(accent, blur: 14, a: 0.7)
+            : const <BoxShadow>[],
       ),
       alignment: Alignment.bottomCenter,
       padding: const EdgeInsets.only(bottom: 6),
       child: (!isBlack && note.pitchClass == 0)
           ? Text(
               note.name,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 10,
-                color: Colors.black54,
-                fontWeight: FontWeight.w600,
+                color: pressed ? Colors.white : Colors.black54,
+                fontWeight: FontWeight.w700,
               ),
             )
           : null,

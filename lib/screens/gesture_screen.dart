@@ -22,6 +22,7 @@ import '../widgets/hand_overlay.dart';
 import '../widgets/note_ripple_painter.dart';
 import '../widgets/piano_keyboard.dart';
 import '../widgets/synth_controls.dart';
+import '../widgets/ui_kit.dart';
 import '../widgets/update_dialog.dart';
 import 'settings_screen.dart';
 
@@ -277,7 +278,8 @@ class _GestureScreenState extends State<GestureScreen>
       isScrollControlled: true,
       backgroundColor: AppTheme.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(AppTheme.radiusLg)),
       ),
       builder: (BuildContext sheetContext) {
         return DraggableScrollableSheet(
@@ -292,6 +294,14 @@ class _GestureScreenState extends State<GestureScreen>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: <Widget>[
                   _SheetHandle(),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(20, 4, 20, 2),
+                    child: Text('Synth',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.textHi)),
+                  ),
                   SynthControls(),
                 ],
               ),
@@ -310,47 +320,27 @@ class _GestureScreenState extends State<GestureScreen>
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: Colors.black.withValues(alpha: 0.25),
-        title: const Text('Gesture'),
+        titleSpacing: 16,
+        title: const BrandMark(fontSize: 18),
+        flexibleSpace: const IgnorePointer(child: _TopScrim()),
         actions: <Widget>[
-          // Quick gesture-mode switch.
-          PopupMenuButton<GestureMode>(
-            icon: const Icon(Icons.back_hand),
-            tooltip: 'Gesture mode: ${s.gestureMode.label}',
-            initialValue: s.gestureMode,
-            onSelected: settings.setGestureMode,
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<GestureMode>>[
-              for (final GestureMode mode in GestureMode.values)
-                PopupMenuItem<GestureMode>(
-                  value: mode,
-                  child: Text(mode.label),
-                ),
-            ],
-          ),
+          _GestureModeButton(
+              current: s.gestureMode, onSelected: settings.setGestureMode),
           if (_service.hasMultipleCameras)
             IconButton(
-              icon: const Icon(Icons.cameraswitch),
+              icon: const Icon(Icons.cameraswitch_outlined),
               tooltip: _service.usingFrontCamera
                   ? 'Switch to back camera'
                   : 'Switch to front camera',
               onPressed: _starting ? null : _flipCamera,
             ),
           IconButton(
-            icon: const Icon(Icons.tune),
-            tooltip: 'Synth controls',
-            onPressed: _openSynthSheet,
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
             onPressed: _openSettings,
           ),
+          const SizedBox(width: 4),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openSynthSheet,
-        icon: const Icon(Icons.graphic_eq),
-        label: const Text('Synth'),
       ),
       body: _buildBody(s),
     );
@@ -361,20 +351,14 @@ class _GestureScreenState extends State<GestureScreen>
     final CameraController? controller = _service.controller;
 
     if (_paused) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(Icons.pause_circle_outline, size: 48, color: Colors.white38),
-            SizedBox(height: 12),
-            Text('Camera paused to save battery',
-                style: TextStyle(color: Colors.white54)),
-          ],
-        ),
+      return const _MessageView(
+        icon: Icons.pause_rounded,
+        title: 'Camera paused',
+        message: 'Paused to save battery. Resume when you come back.',
       );
     }
     if (_starting) {
-      return const Center(child: CircularProgressIndicator());
+      return const _LoadingView();
     }
     if (status != TrackingStatus.running ||
         controller == null ||
@@ -423,6 +407,8 @@ class _GestureScreenState extends State<GestureScreen>
                           ),
                         ),
                       ),
+                    // Subtle vignette so overlays read as a "viewport".
+                    const IgnorePointer(child: _Vignette()),
                   ],
                 ),
               ),
@@ -431,7 +417,7 @@ class _GestureScreenState extends State<GestureScreen>
         ),
         // Status chips.
         Positioned(
-          top: kToolbarHeight + 28,
+          top: kToolbarHeight + 24,
           left: 12,
           right: 12,
           child: _StatusBar(
@@ -440,37 +426,58 @@ class _GestureScreenState extends State<GestureScreen>
         // Face-detection diagnostics HUD (shown while face features are on).
         if (s.faceControlEnabled || s.gestureMode == GestureMode.face)
           Positioned(
-            top: kToolbarHeight + 72,
+            top: kToolbarHeight + 66,
             left: 12,
-            right: 12,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(8),
-              ),
+            child: GlassPanel(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+              radius: 8,
+              opacity: 0.5,
               child: Text(
                 _service.faceDebugLine,
                 style: const TextStyle(
-                    fontFamily: 'monospace', fontSize: 12, color: Colors.white),
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    color: AppTheme.textLow),
               ),
             ),
           ),
-        // Keyboard highlight strip (non-interactive display of what's playing).
+        // Bottom controls: the Synth action sits just above the keyboard strip
+        // (non-interactive display of what's currently playing).
         Positioned(
-          left: 8,
-          right: 8,
-          bottom: 8,
+          left: 10,
+          right: 10,
+          bottom: 10,
           child: SafeArea(
             top: false,
-            child: SizedBox(
-              height: 96,
-              child: PianoKeyboard(
-                notes: buildKeyboard(
-                    startOctave: s.startOctave, octaves: s.octaves),
-                activeNotes: context.watch<PianoController>().activeNotes,
-                interactive: false,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: <Widget>[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12, right: 2),
+                  child: GradientButton(
+                    onPressed: _openSynthSheet,
+                    icon: Icons.graphic_eq,
+                    label: 'Synth',
+                  ),
+                ),
+                GlassPanel(
+                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+                  radius: AppTheme.radius,
+                  opacity: 0.5,
+                  child: SizedBox(
+                    height: 88,
+                    child: PianoKeyboard(
+                      notes: buildKeyboard(
+                          startOctave: s.startOctave, octaves: s.octaves),
+                      activeNotes:
+                          context.watch<PianoController>().activeNotes,
+                      interactive: false,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -479,43 +486,40 @@ class _GestureScreenState extends State<GestureScreen>
   }
 
   Widget _buildUnavailable(TrackingStatus status) {
-    final (IconData icon, String message) = switch (status) {
+    final (IconData icon, String title, String message) = switch (status) {
       TrackingStatus.denied => (
-          Icons.no_photography,
-          'Camera permission is required for gesture mode. '
-              'Grant it in system settings, then retry.'
+          Icons.no_photography_outlined,
+          'Camera access needed',
+          'Gesture mode needs the camera. Grant permission in system '
+              'settings, then retry.'
         ),
       TrackingStatus.unsupported => (
-          Icons.phonelink_erase,
-          'Hand tracking is only available on Android.'
+          Icons.phonelink_erase_outlined,
+          'Android only',
+          'Hand and face tracking are only available on Android.'
         ),
       _ => (
           Icons.error_outline,
-          _service.error ?? 'Could not start the camera.'
+          'Could not start the camera',
+          _service.error ?? 'Something went wrong starting the camera.'
         ),
     };
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Icon(icon, size: 56, color: Colors.white38),
-            const SizedBox(height: 16),
-            Text(message, textAlign: TextAlign.center),
-            const SizedBox(height: 20),
-            FilledButton.icon(
+    return _MessageView(
+      icon: icon,
+      title: title,
+      message: message,
+      action: status == TrackingStatus.unsupported
+          ? null
+          : GradientButton(
               onPressed: _start,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              icon: Icons.refresh_rounded,
+              label: 'Retry',
             ),
-          ],
-        ),
-      ),
     );
   }
 }
 
+/// The grab handle at the top of the synth bottom sheet.
 class _SheetHandle extends StatelessWidget {
   const _SheetHandle();
 
@@ -523,12 +527,231 @@ class _SheetHandle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Container(
-        margin: const EdgeInsets.only(top: 10, bottom: 4),
-        width: 42,
+        margin: const EdgeInsets.only(top: 12, bottom: 6),
+        width: 40,
         height: 4,
         decoration: BoxDecoration(
-          color: Colors.white24,
+          color: Colors.white.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+  }
+}
+
+/// Top gradient scrim so the app-bar title/icons stay legible over the camera.
+class _TopScrim extends StatelessWidget {
+  const _TopScrim();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[
+            Colors.black.withValues(alpha: 0.55),
+            Colors.transparent,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Radial darkening at the frame edges for a premium "viewport" feel.
+class _Vignette extends StatelessWidget {
+  const _Vignette();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          radius: 1.15,
+          colors: <Color>[
+            Colors.transparent,
+            Colors.black.withValues(alpha: 0.28),
+          ],
+          stops: const <double>[0.62, 1.0],
+        ),
+      ),
+    );
+  }
+}
+
+/// A branded, animated "waking the camera" placeholder.
+class _LoadingView extends StatefulWidget {
+  const _LoadingView();
+
+  @override
+  State<_LoadingView> createState() => _LoadingViewState();
+}
+
+class _LoadingViewState extends State<_LoadingView>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1400),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          FadeTransition(
+            opacity: Tween<double>(begin: 0.45, end: 1.0).animate(_c),
+            child: const BrandMark(fontSize: 26),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: 26,
+            height: 26,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              valueColor:
+                  const AlwaysStoppedAnimation<Color>(AppTheme.primary),
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text('Waking the camera…',
+              style: TextStyle(color: AppTheme.textLow, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+}
+
+/// A centered icon + title + message state, with an optional action.
+class _MessageView extends StatelessWidget {
+  const _MessageView({
+    required this.icon,
+    required this.title,
+    required this.message,
+    this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 84,
+              height: 84,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.surfaceHigh,
+                border: Border.all(color: AppTheme.outline),
+              ),
+              child: Icon(icon, size: 38, color: AppTheme.primary),
+            ),
+            const SizedBox(height: 20),
+            Text(title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textHi)),
+            const SizedBox(height: 8),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 13.5, height: 1.4, color: AppTheme.textLow)),
+            if (action != null) ...<Widget>[
+              const SizedBox(height: 24),
+              action!,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The gesture-mode switcher shown in the app bar as a labelled glass pill.
+class _GestureModeButton extends StatelessWidget {
+  const _GestureModeButton({required this.current, required this.onSelected});
+
+  final GestureMode current;
+  final ValueChanged<GestureMode> onSelected;
+
+  static IconData _iconFor(GestureMode m) => switch (m) {
+        GestureMode.airPiano => Icons.piano,
+        GestureMode.discretePoses => Icons.back_hand,
+        GestureMode.theremin => Icons.waves,
+        GestureMode.face => Icons.face_retouching_natural,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<GestureMode>(
+      tooltip: 'Gesture mode',
+      initialValue: current,
+      onSelected: onSelected,
+      color: AppTheme.bgElevated,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppTheme.radius),
+        side: const BorderSide(color: AppTheme.outline),
+      ),
+      position: PopupMenuPosition.under,
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<GestureMode>>[
+        for (final GestureMode mode in GestureMode.values)
+          PopupMenuItem<GestureMode>(
+            value: mode,
+            child: Row(
+              children: <Widget>[
+                Icon(_iconFor(mode),
+                    size: 18,
+                    color: mode == current
+                        ? AppTheme.primary
+                        : AppTheme.textMed),
+                const SizedBox(width: 12),
+                Text(mode.label,
+                    style: TextStyle(
+                        color: mode == current
+                            ? AppTheme.textHi
+                            : AppTheme.textMed,
+                        fontWeight: mode == current
+                            ? FontWeight.w700
+                            : FontWeight.w500)),
+              ],
+            ),
+          ),
+      ],
+      child: GlassPanel(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        radius: AppTheme.radiusPill,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(_iconFor(current), size: 16, color: AppTheme.primary),
+            const SizedBox(width: 7),
+            Text(current.label,
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textHi)),
+            const Icon(Icons.expand_more, size: 16, color: AppTheme.textLow),
+          ],
         ),
       ),
     );
@@ -549,19 +772,35 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> chips = <String>[
-      settings.gestureMode.label,
-      '${frame.hands.length} hand${frame.hands.length == 1 ? '' : 's'}',
-    ];
+    final List<Widget> pills = <Widget>[];
+
+    if (settings.gestureMode != GestureMode.face) {
+      final int n = frame.hands.length;
+      pills.add(StatusPill(
+        icon: Icons.back_hand_outlined,
+        label: '$n hand${n == 1 ? '' : 's'}',
+        accent: n > 0 ? AppTheme.primary : null,
+      ));
+    }
+
     if (settings.gestureMode == GestureMode.discretePoses) {
       final Iterable<String> poses = output.poses
           .where((HandPose p) => p != HandPose.none)
           .map((HandPose p) => p.label);
-      if (poses.isNotEmpty) chips.add(poses.join(' · '));
+      if (poses.isNotEmpty) {
+        pills.add(StatusPill(
+            icon: Icons.gesture, label: poses.join(' · '), accent: AppTheme.secondary));
+      }
     }
+
     if (output.thereminVolume != null) {
-      chips.add('vol ${(output.thereminVolume! * 100).round()}%');
+      pills.add(StatusPill(
+        icon: Icons.volume_up_outlined,
+        label: 'vol ${(output.thereminVolume! * 100).round()}%',
+        accent: AppTheme.primary,
+      ));
     }
+
     if (settings.faceControlEnabled ||
         settings.gestureMode == GestureMode.face) {
       if (face.present) {
@@ -569,23 +808,20 @@ class _StatusBar extends StatelessWidget {
             ? FaceSignal.mouthOpen
             : settings.faceSignal;
         final double v = face.signal(sig) ?? 0.0;
-        chips.add('face ${(v * 100).round()}%');
+        pills.add(StatusPill(
+          icon: Icons.face_retouching_natural,
+          label: 'face ${(v * 100).round()}%',
+          accent: AppTheme.success,
+        ));
       } else {
-        chips.add('no face');
+        pills.add(const StatusPill(
+          icon: Icons.face_retouching_off,
+          label: 'no face',
+          accent: AppTheme.warning,
+        ));
       }
     }
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: <Widget>[
-        for (final String c in chips)
-          Chip(
-            label: Text(c),
-            visualDensity: VisualDensity.compact,
-            backgroundColor: AppTheme.surface.withValues(alpha: 0.8),
-            side: BorderSide(color: AppTheme.primary.withValues(alpha: 0.4)),
-          ),
-      ],
-    );
+
+    return Wrap(spacing: 8, runSpacing: 8, children: pills);
   }
 }

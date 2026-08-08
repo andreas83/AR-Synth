@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/update_service.dart';
+import '../theme.dart';
 
 /// Prompts the user to install an available update, showing download progress
 /// and handing off to the system installer.
@@ -65,7 +66,13 @@ class _UpdateDialogState extends State<UpdateDialog> {
   Widget build(BuildContext context) {
     final UpdateInfo u = widget.update;
     return AlertDialog(
-      title: const Text('Update available'),
+      title: const Row(
+        children: <Widget>[
+          Icon(Icons.system_update, size: 22, color: AppTheme.primary),
+          SizedBox(width: 10),
+          Text('Update available'),
+        ],
+      ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
