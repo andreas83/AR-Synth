@@ -34,9 +34,15 @@ class FaceTracker {
 
   /// Detects a face in [image]; on completion calls [onFrame] with the result.
   /// No-op if a detection is already running or the throttle window is open.
+  ///
+  /// [isFront] must reflect whether [image] comes from a front-facing (mirrored)
+  /// camera so the ML Kit input rotation can be compensated correctly — see
+  /// [rotationDegrees]. Getting this wrong leaves the face upside-down to ML
+  /// Kit, which then detects nothing.
   Future<void> process(
     CameraImage image,
     int sensorOrientation,
+    bool isFront,
     void Function(FaceFrame) onFrame,
   ) async {
     if (_busy) return;
@@ -45,7 +51,7 @@ class FaceTracker {
     _busy = true;
     _last = now;
     // Copy bytes synchronously (before any await) so the camera buffer is safe.
-    final InputImage? input = _toInputImage(image, sensorOrientation);
+    final InputImage? input = _toInputImage(image, sensorOrientation, isFront);
     try {
       if (input == null) return;
       final List<Face> faces = await _detector.processImage(input);
@@ -59,10 +65,25 @@ class FaceTracker {
     }
   }
 
-  InputImage? _toInputImage(CameraImage image, int sensorOrientation) {
-    final InputImageRotation rotation =
-        InputImageRotationValue.fromRawValue(sensorOrientation) ??
-            InputImageRotation.rotation0deg;
+  /// The clockwise rotation (in degrees, one of 0/90/180/270) ML Kit must apply
+  /// to a frame from a camera with mount [sensorOrientation] to make it upright,
+  /// assuming the app is locked to portrait (device rotation 0).
+  ///
+  /// For the back camera this is just the sensor orientation. The front camera
+  /// is mirrored, so the compensation runs the other way: `360 - sensor`.
+  /// Feeding the raw sensor orientation for the front camera (commonly 270°)
+  /// rotates the face 180° — upside-down — and ML Kit's face detector then
+  /// silently finds no face.
+  static int rotationDegrees(int sensorOrientation, bool isFront) {
+    final int sensor = ((sensorOrientation % 360) + 360) % 360;
+    return isFront ? (360 - sensor) % 360 : sensor;
+  }
+
+  InputImage? _toInputImage(
+      CameraImage image, int sensorOrientation, bool isFront) {
+    final InputImageRotation rotation = InputImageRotationValue.fromRawValue(
+            rotationDegrees(sensorOrientation, isFront)) ??
+        InputImageRotation.rotation0deg;
     final Uint8List nv21 = _yuv420ToNv21(image);
     return InputImage.fromBytes(
       bytes: nv21,

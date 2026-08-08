@@ -7,6 +7,7 @@ import 'package:ar_synth/models/hand_data.dart';
 import 'package:ar_synth/models/music.dart';
 import 'package:ar_synth/models/synth_settings.dart';
 import 'package:ar_synth/services/audio_engine.dart';
+import 'package:ar_synth/services/face_tracker.dart';
 import 'package:ar_synth/services/gesture_mapper.dart';
 import 'package:ar_synth/services/update_service.dart';
 import 'package:ar_synth/state/arpeggiator.dart';
@@ -276,6 +277,23 @@ void main() {
       expect(high.heldNotes, isNotEmpty);
       expect(high.heldNotes.first.midi, greaterThan(low.heldNotes.first.midi));
       expect(low.thereminVolume, isNotNull);
+    });
+  });
+
+  group('face tracker input rotation', () {
+    test('back camera passes the sensor orientation through unchanged', () {
+      expect(FaceTracker.rotationDegrees(0, false), 0);
+      expect(FaceTracker.rotationDegrees(90, false), 90);
+      expect(FaceTracker.rotationDegrees(270, false), 270);
+    });
+
+    test('front camera is mirror-compensated (360 - sensor)', () {
+      // The common front-camera case: sensor mounted at 270°. The raw value
+      // would leave the face upside-down to ML Kit; 90° is upright.
+      expect(FaceTracker.rotationDegrees(270, true), 90);
+      expect(FaceTracker.rotationDegrees(90, true), 270);
+      expect(FaceTracker.rotationDegrees(0, true), 0);
+      expect(FaceTracker.rotationDegrees(180, true), 180);
     });
   });
 }

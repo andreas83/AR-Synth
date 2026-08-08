@@ -148,7 +148,7 @@ class HandTrackingService {
     // it never blocks the synchronous hand detect below. Kick it off first
     // (it copies the bytes it needs synchronously before awaiting).
     if (faceEnabled) {
-      _faceTracker?.process(image, _sensorOrientation, (FaceFrame f) {
+      _faceTracker?.process(image, _sensorOrientation, _mirror, (FaceFrame f) {
         if (!_faceFrames.isClosed) _faceFrames.add(f);
       });
     }
