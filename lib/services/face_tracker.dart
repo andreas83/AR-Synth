@@ -3,6 +3,7 @@ import 'dart:ui' show Size;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
 import '../models/face_data.dart';
@@ -90,7 +91,15 @@ class FaceTracker {
       _latest = frame;
       onFrame(frame);
     } catch (e) {
-      lastError = e.toString();
+      if (e is PlatformException) {
+        // Capture everything the native error carries — the message names the
+        // exception, and details/stacktrace (when present) name the class that
+        // threw, which is what we need to pinpoint the ML Kit failure.
+        lastError = 'code=${e.code} | msg=${e.message} | '
+            'details=${e.details} | stack=${e.stacktrace}';
+      } else {
+        lastError = e.toString();
+      }
       debugPrint('FaceTracker: detect error: $e');
       // Still emit so the UI refreshes and shows the live diagnostics.
       onFrame(const FaceFrame.empty());
@@ -99,11 +108,15 @@ class FaceTracker {
     }
   }
 
-  /// A one-line snapshot of the detection pipeline for the on-screen HUD.
+  /// A snapshot of the detection pipeline for the on-screen HUD, including the
+  /// full last error (multi-line) so the failing native call is visible.
   String get debugLine {
-    final String err =
-        lastError == null ? '' : ' err:${lastError!.split('\n').first}';
-    return 'at:$attempts dt:$detections fc:$facesFound$err';
+    final String head = 'at:$attempts dt:$detections fc:$facesFound';
+    if (lastError == null) return head;
+    // Collapse to single spaces and cap length so the HUD stays readable.
+    final String err = lastError!.replaceAll(RegExp(r'\s+'), ' ');
+    final String capped = err.length > 600 ? err.substring(0, 600) : err;
+    return '$head\nerr: $capped';
   }
 
   /// The clockwise rotation (0/90/180/270) ML Kit must apply to a frame to make

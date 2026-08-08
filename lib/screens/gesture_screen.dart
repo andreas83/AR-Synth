@@ -428,17 +428,21 @@ class _GestureScreenState extends State<GestureScreen>
           Positioned(
             top: kToolbarHeight + 66,
             left: 12,
+            right: 12,
             child: GlassPanel(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
               radius: 8,
-              opacity: 0.5,
+              opacity: 0.6,
               child: Text(
                 _service.faceDebugLine,
+                maxLines: 10,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                     fontFamily: 'monospace',
-                    fontSize: 11,
-                    color: AppTheme.textLow),
+                    fontSize: 10.5,
+                    height: 1.25,
+                    color: AppTheme.textHi),
               ),
             ),
           ),
