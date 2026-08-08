@@ -214,59 +214,6 @@ class AudioEngine {
     });
   }
 
-  /// Strike a one-shot percussive note that rings out on its own: attack to
-  /// [velocity]-scaled peak, then decay to silence and auto-stop, ignoring the
-  /// sustain stage. Used by the handpan mode — there is no matching note-off;
-  /// the [envelope]'s decay determines how long the note rings.
-  Future<void> strike(Note note,
-      {double velocity = 1.0, Adsr? envelope}) async {
-    if (!_initialized) return;
-    final int midi = _effectiveMidi(note);
-    if (midi < 0 || midi > 127) return;
-
-    // Retrigger: stop any voice already sounding this note.
-    if (_voices.containsKey(midi)) {
-      await _hardStop(midi);
-    }
-
-    final Adsr env = envelope ?? _settings.adsr;
-    final double peak = (0.9 * velocity).clamp(0.0, 1.0);
-    final bool useSamples =
-        _settings.engine == SoundEngine.sample && hasSamples;
-
-    SoundHandle? handle;
-    try {
-      handle = useSamples ? await _playSample(midi) : await _playSynth(midi);
-    } catch (e) {
-      debugPrint('AudioEngine.strike failed for $note: $e');
-      return;
-    }
-    if (handle == null) return;
-    final SoundHandle h = handle;
-
-    final _Voice voice = _Voice(h, peak);
-    _voices[midi] = voice;
-
-    final Duration attack = _secs(env.attack);
-    final Duration decay = _secs(env.decay);
-    try {
-      _soloud.fadeVolume(h, peak, attack);
-    } catch (_) {}
-
-    // After the attack, ring down to silence over the decay and stop.
-    voice.decayTimer = Timer(attack, () {
-      if (voice.released) return;
-      try {
-        _soloud.fadeVolume(h, 0.0, decay);
-        _soloud.scheduleStop(h, decay);
-      } catch (_) {}
-      // Release the voice slot once the note has fully rung out.
-      Timer(decay, () {
-        if (_voices[midi] == voice) _voices.remove(midi);
-      });
-    });
-  }
-
   /// Release a note (enters the ADSR release stage, then stops).
   Future<void> noteOff(Note note) async {
     if (!_initialized) return;

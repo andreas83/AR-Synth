@@ -85,30 +85,6 @@ class SettingsScreen extends StatelessWidget {
                 ],
               ),
             ),
-          if (s.gestureMode == GestureMode.handpan)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Row(
-                children: <Widget>[
-                  const SizedBox(
-                      width: 110,
-                      child: Text('Handpan tuning',
-                          style: TextStyle(fontSize: 13))),
-                  const SizedBox(width: 8),
-                  DropdownButton<String>(
-                    value: s.handpanTuning,
-                    items: <DropdownMenuItem<String>>[
-                      for (final String name in kHandpanTunings.keys)
-                        DropdownMenuItem<String>(
-                            value: name, child: Text(name)),
-                    ],
-                    onChanged: (String? v) {
-                      if (v != null) c.setHandpanTuning(v);
-                    },
-                  ),
-                ],
-              ),
-            ),
           const Divider(height: 8),
           const Padding(
             padding: EdgeInsets.fromLTRB(16, 12, 16, 0),

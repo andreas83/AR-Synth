@@ -145,8 +145,7 @@ class SynthControls extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           const Text(
-            'Scale + key apply to Air Piano lanes; key also transposes the '
-            'handpan.',
+            'Scale + key apply to Air Piano lanes.',
             style: TextStyle(fontSize: 11, color: Colors.white54),
           ),
 

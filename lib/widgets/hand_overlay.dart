@@ -29,39 +29,9 @@ class HandOverlayPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    _drawHandpan(canvas, size);
     _drawSkeletons(canvas, size);
     _drawGuideLines(canvas, size);
     _drawCursors(canvas, size);
-  }
-
-  /// Draws the handpan tone fields (handpan mode) behind the hand skeleton. Each
-  /// field brightens while a fingertip is resting on it; the Ding is larger and
-  /// tinted with the secondary accent.
-  void _drawHandpan(Canvas canvas, Size size) {
-    if (output.fields.isEmpty) return;
-    final double r = size.shortestSide * 0.11;
-    for (final HandpanField f in output.fields) {
-      final Offset c = _n(f.x, f.y, size);
-      final bool touched = output.heldNotes.contains(f.note);
-      final Color accent = f.isDing ? AppTheme.secondary : AppTheme.primary;
-      final double radius = f.isDing ? r * 1.18 : r;
-      canvas.drawCircle(
-        c,
-        radius,
-        Paint()..color = accent.withValues(alpha: touched ? 0.5 : 0.14),
-      );
-      canvas.drawCircle(
-        c,
-        radius,
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = touched ? 3 : 1.5
-          ..color = accent.withValues(alpha: touched ? 0.95 : 0.5),
-      );
-      _label(canvas, f.note.name, c + const Offset(-9, -8),
-          Colors.white.withValues(alpha: 0.92));
-    }
   }
 
   /// Landmark -> preview-aligned pixel offset.

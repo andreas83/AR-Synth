@@ -60,8 +60,6 @@ class SettingsController extends ChangeNotifier {
       _update(_settings.copyWith(gestureSensitivity: v));
   void setThereminScale(String s) =>
       _update(_settings.copyWith(thereminScale: s));
-  void setHandpanTuning(String t) =>
-      _update(_settings.copyWith(handpanTuning: t));
   void setStartOctave(int o) =>
       _update(_settings.copyWith(startOctave: o.clamp(1, 6)));
   void setOctaves(int n) => _update(_settings.copyWith(octaves: n.clamp(1, 3)));
