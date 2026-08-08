@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Flat white silhouette for Android 13+ themed (monochrome) icons -->
+  <g transform="translate(512 566) scale(0.80) translate(-512 -512)" fill="#ffffff" stroke="#ffffff">
+    <g fill="none" stroke="#ffffff" stroke-linecap="round">
+      <path d="M 300 380 A 226 226 0 0 1 724 380" stroke-width="16" opacity="0.85"/>
+      <path d="M 360 300 A 300 300 0 0 1 664 300" stroke-width="11" opacity="0.55"/>
+      <ellipse cx="512" cy="452" rx="188" ry="182" stroke-width="12" opacity="0.4" fill="none"/>
+    </g>
+    <line x1="418" y1="642" x2="300" y2="590" stroke-width="48" stroke-linecap="round"/>
+    <rect x="399" y="360" width="52" height="240" rx="26" stroke="none"/>
+    <rect x="459" y="325" width="52" height="275" rx="26" stroke="none"/>
+    <rect x="519" y="352" width="52" height="248" rx="26" stroke="none"/>
+    <rect x="577" y="405" width="50" height="195" rx="25" stroke="none"/>
+    <path d="M 372 552 L 654 552 Q 660 648 632 700 Q 598 748 512 754 Q 426 748 392 700 Q 364 648 372 552 Z" stroke="none"/>
+    <circle cx="481" cy="330" r="16" stroke="none"/>
+  </g>
+</svg>

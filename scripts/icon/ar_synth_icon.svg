@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- App theme background -->
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0%"  stop-color="#1a2030"/>
+      <stop offset="55%" stop-color="#12151d"/>
+      <stop offset="100%" stop-color="#080a0e"/>
+    </radialGradient>
+
+    <!-- Neon pitch gradient: cyan -> violet -> magenta (app primary/secondary) -->
+    <linearGradient id="neon" x1="20%" y1="8%" x2="82%" y2="96%">
+      <stop offset="0%"  stop-color="#5fd0ff"/>
+      <stop offset="45%" stop-color="#8a7bff"/>
+      <stop offset="100%" stop-color="#e85bff"/>
+    </linearGradient>
+
+    <linearGradient id="ripple" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"  stop-color="#40C4FF"/>
+      <stop offset="100%" stop-color="#E040FB"/>
+    </linearGradient>
+
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="softglow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="22"/>
+    </filter>
+
+    <clipPath id="round">
+      <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#round)">
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
+
+    <!-- Sound ripples blooming from the hand -->
+    <g fill="none" stroke="url(#ripple)" stroke-linecap="round">
+      <ellipse cx="512" cy="452" rx="300" ry="290" stroke-width="8"  opacity="0.16"/>
+      <ellipse cx="512" cy="452" rx="242" ry="234" stroke-width="10" opacity="0.30"/>
+      <ellipse cx="512" cy="452" rx="188" ry="182" stroke-width="12" opacity="0.55"/>
+    </g>
+
+    <!-- Bright ripple arcs (top bloom) -->
+    <g fill="none" stroke="url(#neon)" stroke-linecap="round" filter="url(#glow)">
+      <path d="M 300 380 A 226 226 0 0 1 724 380" stroke-width="14" opacity="0.9"/>
+      <path d="M 360 300 A 300 300 0 0 1 664 300" stroke-width="10" opacity="0.55"/>
+    </g>
+
+    <!-- The hand (open palm, fingers spread) -->
+    <g fill="url(#neon)" stroke="url(#neon)" filter="url(#glow)">
+      <!-- soft under-glow -->
+      <g filter="url(#softglow)" opacity="0.5" stroke-width="48" stroke-linecap="round">
+        <line x1="418" y1="640" x2="300" y2="588"/>
+        <rect x="399" y="360" width="52" height="240" rx="26" stroke="none"/>
+        <rect x="459" y="325" width="52" height="275" rx="26" stroke="none"/>
+        <rect x="519" y="352" width="52" height="248" rx="26" stroke="none"/>
+        <rect x="577" y="405" width="50" height="195" rx="25" stroke="none"/>
+        <path d="M 372 552 L 654 552 Q 660 648 632 700 Q 598 748 512 754 Q 426 748 392 700 Q 364 648 372 552 Z" stroke="none"/>
+      </g>
+
+      <!-- thumb (capsule) -->
+      <line x1="418" y1="642" x2="300" y2="590" stroke-width="48" stroke-linecap="round"/>
+      <!-- fingers -->
+      <rect x="399" y="360" width="52" height="240" rx="26" stroke="none"/>   <!-- index -->
+      <rect x="459" y="325" width="52" height="275" rx="26" stroke="none"/>   <!-- middle -->
+      <rect x="519" y="352" width="52" height="248" rx="26" stroke="none"/>   <!-- ring -->
+      <rect x="577" y="405" width="50" height="195" rx="25" stroke="none"/>   <!-- pinky -->
+      <!-- palm -->
+      <path d="M 372 552 L 654 552 Q 660 648 632 700 Q 598 748 512 754 Q 426 748 392 700 Q 364 648 372 552 Z" stroke="none"/>
+    </g>
+
+    <!-- Fingertip spark where a note is triggered -->
+    <circle cx="481" cy="330" r="16" fill="#eafcff" filter="url(#glow)"/>
+  </g>
+</svg>
