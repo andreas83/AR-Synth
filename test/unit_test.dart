@@ -11,6 +11,7 @@ import 'package:ar_synth/services/gesture_mapper.dart';
 import 'package:ar_synth/services/update_service.dart';
 import 'package:ar_synth/state/arpeggiator.dart';
 import 'package:ar_synth/utils/finger_geometry.dart';
+import 'package:ar_synth/utils/overlay_transform.dart';
 
 void main() {
   group('Note', () {
@@ -188,6 +189,43 @@ void main() {
       expect(hz(0.0), closeTo(80.0, 1e-6));
       expect(hz(1.0), lessThan(16000.0));
       expect(hz(1.0), greaterThan(hz(0.5)));
+    });
+  });
+
+  group('overlay coordinate transform', () {
+    void expectPoint(Offset got, double x, double y) {
+      expect(got.dx, closeTo(x, 1e-9));
+      expect(got.dy, closeTo(y, 1e-9));
+    }
+
+    test('back camera at 0deg is the identity', () {
+      expectPoint(displayPoint(0.2, 0.7, 0, false), 0.2, 0.7);
+    });
+
+    test('the image center is fixed under every rotation/mirror', () {
+      for (final int o in <int>[0, 90, 180, 270]) {
+        expectPoint(displayPoint(0.5, 0.5, o, false), 0.5, 0.5);
+        expectPoint(displayPoint(0.5, 0.5, o, true), 0.5, 0.5);
+      }
+    });
+
+    test('back camera at 90deg rotates the axes', () {
+      // R90: (x,y) -> (1-y, x) about the center.
+      expectPoint(displayPoint(0.2, 0.7, 90, false), 0.3, 0.2);
+    });
+
+    test('front camera at 270deg matches the plugin example', () {
+      // Typical front sensor: net transform is x' = 1 - y, y' = 1 - x, so the
+      // skeleton tracks the mirrored, upright selfie preview.
+      expectPoint(displayPoint(0.2, 0.7, 270, true), 0.3, 0.8);
+    });
+
+    test('front mirror flips the display axis (vs back) at 270deg', () {
+      // Back 270deg: (x,y) -> (y, 1-x). The front selfie mirror negates the
+      // sensor Y, which after the 270deg rotation lands on the display X axis.
+      final Offset back = displayPoint(0.5, 0.8, 270, false);
+      final Offset front = displayPoint(0.5, 0.8, 270, true);
+      expect(back.dx, closeTo(1.0 - front.dx, 1e-9));
     });
   });
 

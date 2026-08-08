@@ -16,6 +16,7 @@ import '../state/piano_controller.dart';
 import '../state/settings_controller.dart';
 import '../theme.dart';
 import '../utils/finger_geometry.dart';
+import '../utils/overlay_transform.dart';
 import '../widgets/hand_overlay.dart';
 import '../widgets/note_ripple_painter.dart';
 import '../widgets/piano_keyboard.dart';
@@ -73,7 +74,7 @@ class _GestureScreenState extends State<GestureScreen>
       // Face mode: the face plays the synth.
       final GestureOutput output = _mapper.mapFace(face, settings);
       _piano?.applyGesture(output);
-      if (settings.visualizerEnabled) _spawnRipples(output);
+      if (settings.visualizerEnabled) _spawnRipples(output, sensorSpace: false);
       setState(() {
         _face = face;
         _output = output;
@@ -92,7 +93,10 @@ class _GestureScreenState extends State<GestureScreen>
     _clockMs.value = ms;
   }
 
-  void _spawnRipples(GestureOutput output) {
+  /// Spawns ripples for freshly-held notes. [sensorSpace] is true when the
+  /// cursor positions come from hand landmarks (raw sensor space, so they need
+  /// [displayPoint]); face-mode cursors are already synthetic display positions.
+  void _spawnRipples(GestureOutput output, {bool sensorSpace = true}) {
     final Set<Note> now = output.heldNotes;
     final Set<Note> fresh = now.difference(_prevHeld);
     _prevHeld = <Note>{...now};
@@ -100,9 +104,19 @@ class _GestureScreenState extends State<GestureScreen>
     final int ms = _clockMs.value;
     for (final Note n in fresh) {
       final FingerCursor? cursor = _cursorForNote(output, n);
+      double x = cursor?.x ?? 0.5;
+      double y = cursor?.y ?? 0.5;
+      if (sensorSpace) {
+        // Map raw landmark space into preview display space so ripples land
+        // under the finger like the overlay does.
+        final Offset p = displayPoint(
+            x, y, _service.sensorOrientation, _service.isFrontCamera);
+        x = p.dx;
+        y = p.dy;
+      }
       _ripples.add(NoteRipple(
-        x: cursor?.x ?? 0.5,
-        y: cursor?.y ?? 0.5,
+        x: x,
+        y: y,
         pitchClass: n.pitchClass,
         bornMs: ms,
       ));
@@ -233,12 +247,6 @@ class _GestureScreenState extends State<GestureScreen>
         backgroundColor: Colors.black.withValues(alpha: 0.25),
         title: const Text('Gesture'),
         actions: <Widget>[
-          // Rotate the camera preview to upright (device-dependent; persisted).
-          IconButton(
-            icon: const Icon(Icons.screen_rotation),
-            tooltip: 'Rotate preview',
-            onPressed: settings.rotateCameraPreview,
-          ),
           // Quick gesture-mode switch.
           PopupMenuButton<GestureMode>(
             icon: const Icon(Icons.back_hand),
@@ -282,47 +290,48 @@ class _GestureScreenState extends State<GestureScreen>
       return _buildUnavailable(status);
     }
 
+    // Preview aspect ratio from the sensor frame (landscape) shown upright.
+    final Size previewSize = controller.value.previewSize ?? const Size(4, 3);
+    final double previewAspect = previewSize.height / previewSize.width;
+
     return Stack(
       children: <Widget>[
         // Camera preview + hand overlay.
         //
-        // IMPORTANT: only the PREVIEW is rotated, never the overlay.
-        // hand_landmarker's detect() rotates the frame by the sensor
-        // orientation *before* running inference, so the landmarks it returns
-        // are already in upright, display-oriented space. The raw preview
-        // texture is not, so it alone needs the rotation to match. Rotating the
-        // overlay too would re-rotate coordinates that are already correct and
-        // knock the skeleton off the hand.
+        // hand_landmarker reports landmarks in the *raw sensor* frame, so the
+        // overlay painter (and ripple spawn positions) rotate/mirror them into
+        // the preview's display space via displayPoint(). The CameraPreview is
+        // auto-oriented by the camera plugin; the app is locked to portrait, so
+        // both share one upright, display-oriented space and stay aligned
+        // without any manual RotatedBox.
         Positioned.fill(
           child: ColoredBox(
             color: Colors.black,
             child: Center(
               child: AspectRatio(
-                aspectRatio: 1 / controller.value.aspectRatio,
-                // Rotate the preview AND its overlays as one group so the hand
-                // skeleton / ripples stay locked to the camera image at every
-                // rotation (the rotate button now turns them together).
-                child: RotatedBox(
-                  quarterTurns: s.cameraQuarterTurns % 4,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: <Widget>[
-                      controller.buildPreview(),
-                      CustomPaint(
-                        painter:
-                            HandOverlayPainter(frame: _frame, output: _output),
+                aspectRatio: previewAspect,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: <Widget>[
+                    controller.buildPreview(),
+                    CustomPaint(
+                      painter: HandOverlayPainter(
+                        frame: _frame,
+                        output: _output,
+                        sensorOrientation: _service.sensorOrientation,
+                        frontCamera: _service.isFrontCamera,
                       ),
-                      if (s.visualizerEnabled)
-                        RepaintBoundary(
-                          child: CustomPaint(
-                            painter: NoteRipplePainter(
-                              ripples: _ripples,
-                              clockMs: _clockMs,
-                            ),
+                    ),
+                    if (s.visualizerEnabled)
+                      RepaintBoundary(
+                        child: CustomPaint(
+                          painter: NoteRipplePainter(
+                            ripples: _ripples,
+                            clockMs: _clockMs,
                           ),
                         ),
-                    ],
-                  ),
+                      ),
+                  ],
                 ),
               ),
             ),

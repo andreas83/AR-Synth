@@ -172,9 +172,13 @@ turns those into notes:
 - **Theremin** sorts detected hands left→right: the right hand's height sets the
   pitch (snapped to the selected scale), the left hand's height sets volume.
 
-Front-camera coordinates are mirrored so the overlay lines up with the selfie
-preview. Overlay/keyboard alignment and thresholds are intentionally simple and
-easy to tune in `gesture_mapper.dart` / `hand_tracking_service.dart`.
+`hand_landmarker` reports landmarks in the raw camera-sensor frame, so the
+overlay maps them into the preview's display space — rotating by the sensor
+mount orientation and mirroring for the front (selfie) camera — in
+`utils/overlay_transform.dart`. With the app locked to portrait and the preview
+auto-oriented by the camera plugin, the skeleton, cursors and ripples stay
+locked to the hand without any manual rotation. Gesture thresholds are
+intentionally simple and easy to tune in `gesture_mapper.dart`.
 
 ## Testing & quality
 
@@ -186,10 +190,9 @@ flutter test        # unit tests for music theory + gesture geometry
 ## Manual test checklist
 
 - [ ] Launch → grant camera permission.
-- [ ] **Gesture Mode** → if the preview is sideways/upside-down, tap the
-      **rotate** button (app bar) until it's upright — the choice is persisted.
-      Verify the hand skeleton overlay lines up with your hand; notes play, and
-      the keyboard strip highlights what's sounding.
+- [ ] **Gesture Mode** → verify the hand skeleton overlay lines up with your
+      hand (moving/rotating your hand moves/rotates the skeleton the same way);
+      notes play, and the keyboard strip highlights what's sounding.
 - [ ] Switch gesture mode from the app-bar hand icon (Air Piano / Poses /
       Theremin) and adjust sensitivity in **Settings**.
 - [ ] Open the **Synth** bottom sheet → toggle **Synth ↔ Piano** engine and

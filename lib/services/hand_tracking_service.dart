@@ -188,10 +188,10 @@ class HandTrackingService {
     for (final hlm.Hand h in raw) {
       final List<hlm.Landmark> lms = h.landmarks;
       if (lms.length != 21) continue;
-      // Use the landmark coordinates as MediaPipe reports them (relative to the
-      // upright, display-oriented image). CameraPreview shows the same
-      // (un-mirrored) frames, so no x-flip is applied here — flipping would
-      // misalign the overlay with the preview.
+      // Keep the landmark coordinates in the raw sensor frame exactly as the
+      // plugin reports them. Orientation (sensor-mount rotation) and the
+      // front-camera mirror are applied at draw time by displayPoint() in the
+      // overlay, so they line up with the auto-oriented CameraPreview.
       final List<HandLandmark> converted = <HandLandmark>[
         for (final hlm.Landmark p in lms) HandLandmark(p.x, p.y, p.z),
       ];

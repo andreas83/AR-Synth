@@ -64,11 +64,6 @@ class SettingsController extends ChangeNotifier {
       _update(_settings.copyWith(startOctave: o.clamp(1, 6)));
   void setOctaves(int n) => _update(_settings.copyWith(octaves: n.clamp(1, 3)));
 
-  /// Cycle the camera preview rotation (0→1→2→3→0). Persisted, so once the
-  /// user gets it upright it stays that way on their device.
-  void rotateCameraPreview() => _update(_settings.copyWith(
-      cameraQuarterTurns: (_settings.cameraQuarterTurns + 1) % 4));
-
   // Expressive control -------------------------------------------------------
   void setVelocityEnabled(bool v) =>
       _update(_settings.copyWith(velocityEnabled: v));
