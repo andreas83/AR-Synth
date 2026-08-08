@@ -182,11 +182,11 @@ intentionally simple and easy to tune in `gesture_mapper.dart`.
 
 ## App icon
 
-The launcher icon is a neon **open hand blooming pitch-coloured sound ripples**
-— "play the air, hear the light" — in the app's cyan→magenta theme on the dark
-background. It ships as an Android **adaptive icon** (separate background /
-foreground / monochrome layers, so Android 8+ masks it to any shape and Android
-13+ can theme it) with legacy square PNGs as a fallback.
+The launcher icon is a clean, minimal **sound wave** on a vibrant
+cyan→violet→magenta gradient (the app's `primary`/`secondary` palette). It ships
+as an Android **adaptive icon** (separate background / foreground / monochrome
+layers, so Android 8+ masks it to any shape and Android 13+ can theme it) with
+legacy square PNGs as a fallback.
 
 Everything is generated from vector sources in [`scripts/icon/`](scripts/icon/)
 (`ar_synth_icon.svg` is the master; `ar_synth_bg/fg/mono.svg` are the adaptive
