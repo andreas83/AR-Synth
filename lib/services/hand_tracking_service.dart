@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show DeviceOrientation;
 import 'package:hand_landmarker/hand_landmarker.dart' as hlm;
 import 'package:permission_handler/permission_handler.dart';
 
@@ -31,6 +32,12 @@ class HandTrackingService {
   CameraController? _controller;
   hlm.HandLandmarkerPlugin? _plugin;
   FaceTracker? _faceTracker;
+
+  /// Cameras discovered on [start], and the lens the user currently wants.
+  /// Defaults to the front camera (selfie play); [switchCamera] flips it.
+  List<CameraDescription> _cameras = const <CameraDescription>[];
+  CameraLensDirection _lens = CameraLensDirection.front;
+  int _numHands = 2;
 
   /// When true, camera frames are also run through face detection. Toggled by
   /// the UI so the extra native inference only runs when the feature is on.
@@ -85,6 +92,7 @@ class HandTrackingService {
 
     _status = TrackingStatus.starting;
     _error = null;
+    _numHands = numHands;
 
     // 1. Camera permission.
     final PermissionStatus perm = await Permission.camera.request();
@@ -95,17 +103,20 @@ class HandTrackingService {
     }
 
     try {
-      // 2. Pick the front camera (fall back to the first available).
+      // 2. Pick the requested lens (front by default), falling back to whatever
+      //    the device offers if that lens is absent.
       final List<CameraDescription> cameras = await availableCameras();
       if (cameras.isEmpty) {
         _status = TrackingStatus.error;
         _error = 'No cameras available on this device.';
         return false;
       }
+      _cameras = cameras;
       final CameraDescription camera = cameras.firstWhere(
-        (CameraDescription c) => c.lensDirection == CameraLensDirection.front,
+        (CameraDescription c) => c.lensDirection == _lens,
         orElse: () => cameras.first,
       );
+      _lens = camera.lensDirection;
       _mirror = camera.lensDirection == CameraLensDirection.front;
       _sensorOrientation = camera.sensorOrientation;
 
@@ -148,7 +159,9 @@ class HandTrackingService {
     // it never blocks the synchronous hand detect below. Kick it off first
     // (it copies the bytes it needs synchronously before awaiting).
     if (faceEnabled) {
-      _faceTracker?.process(image, _sensorOrientation, _mirror, (FaceFrame f) {
+      _faceTracker?.process(
+          image, _sensorOrientation, _mirror, _deviceOrientationDegrees(),
+          (FaceFrame f) {
         if (!_faceFrames.isClosed) _faceFrames.add(f);
       });
     }
@@ -207,6 +220,47 @@ class HandTrackingService {
   /// Rough handedness hint from geometry (the plugin doesn't expose it):
   /// in display space, a right hand tends to have the thumb left of the pinky.
   bool _guessRight(List<HandLandmark> lm) => lm[kThumbTip].x < lm[kPinkyTip].x;
+
+  /// The device's current UI rotation in degrees, for ML Kit rotation math.
+  /// The app is locked to portrait, so this is 0 in practice, but reading it
+  /// from the controller keeps face detection correct if that ever changes.
+  int _deviceOrientationDegrees() {
+    switch (_controller?.value.deviceOrientation) {
+      case DeviceOrientation.landscapeLeft:
+        return 90;
+      case DeviceOrientation.portraitDown:
+        return 180;
+      case DeviceOrientation.landscapeRight:
+        return 270;
+      case DeviceOrientation.portraitUp:
+      default:
+        return 0;
+    }
+  }
+
+  /// True when both a front and a back lens are present, so [switchCamera] has
+  /// something to flip to. Populated after the first [start].
+  bool get hasMultipleCameras {
+    final Set<CameraLensDirection> dirs =
+        _cameras.map((CameraDescription c) => c.lensDirection).toSet();
+    return dirs.contains(CameraLensDirection.front) &&
+        dirs.contains(CameraLensDirection.back);
+  }
+
+  /// Whether the front (selfie) lens is the one currently requested/active.
+  bool get usingFrontCamera => _lens == CameraLensDirection.front;
+
+  /// Tears down the current camera and restarts on the other lens (front↔back).
+  /// Returns true when the new camera is running. The face-detection toggle and
+  /// hand count are preserved across the switch.
+  Future<bool> switchCamera() async {
+    _lens = _lens == CameraLensDirection.front
+        ? CameraLensDirection.back
+        : CameraLensDirection.front;
+    await _teardown();
+    _status = TrackingStatus.idle;
+    return start(numHands: _numHands);
+  }
 
   Future<void> stop() async {
     await _teardown();

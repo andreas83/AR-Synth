@@ -35,14 +35,15 @@ class FaceTracker {
   /// Detects a face in [image]; on completion calls [onFrame] with the result.
   /// No-op if a detection is already running or the throttle window is open.
   ///
-  /// [isFront] must reflect whether [image] comes from a front-facing (mirrored)
-  /// camera so the ML Kit input rotation can be compensated correctly — see
-  /// [rotationDegrees]. Getting this wrong leaves the face upside-down to ML
-  /// Kit, which then detects nothing.
+  /// [sensorOrientation] is the camera's mount angle, [isFront] whether it is a
+  /// front-facing lens, and [deviceOrientationDegrees] the device's current UI
+  /// rotation (0/90/180/270). Together they fix the ML Kit input rotation — see
+  /// [rotationDegrees].
   Future<void> process(
     CameraImage image,
     int sensorOrientation,
     bool isFront,
+    int deviceOrientationDegrees,
     void Function(FaceFrame) onFrame,
   ) async {
     if (_busy) return;
@@ -50,9 +51,13 @@ class FaceTracker {
     if (now.difference(_last) < minInterval) return;
     _busy = true;
     _last = now;
-    // Copy bytes synchronously (before any await) so the camera buffer is safe.
-    final InputImage? input = _toInputImage(image, sensorOrientation, isFront);
     try {
+      // Copy bytes synchronously (before the first await) so the camera buffer
+      // is safe to reuse the moment this call returns. Kept inside the try so a
+      // conversion failure can never leave [_busy] stuck true — which would
+      // silently kill face detection for the rest of the session.
+      final InputImage? input = _toInputImage(
+          image, sensorOrientation, isFront, deviceOrientationDegrees);
       if (input == null) return;
       final List<Face> faces = await _detector.processImage(input);
       final FaceFrame frame = _toFaceFrame(faces);
@@ -65,24 +70,25 @@ class FaceTracker {
     }
   }
 
-  /// The clockwise rotation (in degrees, one of 0/90/180/270) ML Kit must apply
-  /// to a frame from a camera with mount [sensorOrientation] to make it upright,
-  /// assuming the app is locked to portrait (device rotation 0).
-  ///
-  /// For the back camera this is just the sensor orientation. The front camera
-  /// is mirrored, so the compensation runs the other way: `360 - sensor`.
-  /// Feeding the raw sensor orientation for the front camera (commonly 270°)
-  /// rotates the face 180° — upside-down — and ML Kit's face detector then
-  /// silently finds no face.
-  static int rotationDegrees(int sensorOrientation, bool isFront) {
+  /// The clockwise rotation (0/90/180/270) ML Kit must apply to a frame to make
+  /// it upright, following the convention of the official `google_mlkit` camera
+  /// example: the front lens adds the device rotation to the sensor mount, the
+  /// back lens subtracts it. In this app's portrait lock (device rotation 0)
+  /// both reduce to the sensor mount orientation.
+  static int rotationDegrees(
+      int sensorOrientation, bool isFront, int deviceOrientationDegrees) {
     final int sensor = ((sensorOrientation % 360) + 360) % 360;
-    return isFront ? (360 - sensor) % 360 : sensor;
+    final int device = ((deviceOrientationDegrees % 360) + 360) % 360;
+    return isFront
+        ? (sensor + device) % 360
+        : (sensor - device + 360) % 360;
   }
 
-  InputImage? _toInputImage(
-      CameraImage image, int sensorOrientation, bool isFront) {
+  InputImage? _toInputImage(CameraImage image, int sensorOrientation,
+      bool isFront, int deviceOrientationDegrees) {
     final InputImageRotation rotation = InputImageRotationValue.fromRawValue(
-            rotationDegrees(sensorOrientation, isFront)) ??
+            rotationDegrees(
+                sensorOrientation, isFront, deviceOrientationDegrees)) ??
         InputImageRotation.rotation0deg;
     final Uint8List nv21 = _yuv420ToNv21(image);
     return InputImage.fromBytes(
@@ -110,24 +116,36 @@ class FaceTracker {
     final Plane vPlane = image.planes[2];
 
     int o = 0;
-    // Y plane, row by row (honoring the source row stride / padding).
+    // Y plane, row by row (honoring the source row stride / padding). Clamp the
+    // copy length to what the source row actually holds so a short final row —
+    // seen on some devices — can't throw a RangeError.
+    final int yRowStride = yPlane.bytesPerRow;
+    final int yLen = yPlane.bytes.length;
     for (int row = 0; row < height; row++) {
-      final int start = row * yPlane.bytesPerRow;
-      out.setRange(o, o + width, yPlane.bytes, start);
-      o += width;
+      final int start = row * yRowStride;
+      final int copy = math.min(width, yLen - start);
+      if (copy <= 0) break;
+      out.setRange(o, o + copy, yPlane.bytes, start);
+      o += width; // keep NV21 row alignment even if the source row was short
     }
 
-    // Interleaved chroma. NV21 order is V then U.
+    // Interleaved chroma. NV21 order is V then U. Reads are bounds-guarded for
+    // the same reason; a missing sample falls back to neutral chroma (128).
+    o = width * height;
     final int uvHeight = height ~/ 2;
     final int uvWidth = width ~/ 2;
     final int uRowStride = uPlane.bytesPerRow;
     final int vRowStride = vPlane.bytesPerRow;
     final int uPixelStride = uPlane.bytesPerPixel ?? 2;
     final int vPixelStride = vPlane.bytesPerPixel ?? 2;
+    final int uLen = uPlane.bytes.length;
+    final int vLen = vPlane.bytes.length;
     for (int row = 0; row < uvHeight; row++) {
       for (int col = 0; col < uvWidth; col++) {
-        out[o++] = vPlane.bytes[row * vRowStride + col * vPixelStride];
-        out[o++] = uPlane.bytes[row * uRowStride + col * uPixelStride];
+        final int vi = row * vRowStride + col * vPixelStride;
+        final int ui = row * uRowStride + col * uPixelStride;
+        out[o++] = vi < vLen ? vPlane.bytes[vi] : 128;
+        out[o++] = ui < uLen ? uPlane.bytes[ui] : 128;
       }
     }
     return out;

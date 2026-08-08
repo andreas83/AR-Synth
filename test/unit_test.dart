@@ -281,19 +281,21 @@ void main() {
   });
 
   group('face tracker input rotation', () {
-    test('back camera passes the sensor orientation through unchanged', () {
-      expect(FaceTracker.rotationDegrees(0, false), 0);
-      expect(FaceTracker.rotationDegrees(90, false), 90);
-      expect(FaceTracker.rotationDegrees(270, false), 270);
+    test('portrait lock: both lenses use the sensor mount orientation', () {
+      // Device rotation 0 (the app is portrait-locked): front and back reduce
+      // to the same value, matching the working hand-tracking convention.
+      expect(FaceTracker.rotationDegrees(270, true, 0), 270); // Pixel front
+      expect(FaceTracker.rotationDegrees(270, false, 0), 270);
+      expect(FaceTracker.rotationDegrees(90, false, 0), 90);
+      expect(FaceTracker.rotationDegrees(0, true, 0), 0);
     });
 
-    test('front camera is mirror-compensated (360 - sensor)', () {
-      // The common front-camera case: sensor mounted at 270°. The raw value
-      // would leave the face upside-down to ML Kit; 90° is upright.
-      expect(FaceTracker.rotationDegrees(270, true), 90);
-      expect(FaceTracker.rotationDegrees(90, true), 270);
-      expect(FaceTracker.rotationDegrees(0, true), 0);
-      expect(FaceTracker.rotationDegrees(180, true), 180);
+    test('device rotation compensates per the ML Kit camera convention', () {
+      // Front adds device rotation, back subtracts it (mod 360).
+      expect(FaceTracker.rotationDegrees(270, true, 90), 0);
+      expect(FaceTracker.rotationDegrees(270, false, 90), 180);
+      expect(FaceTracker.rotationDegrees(90, true, 270), 0);
+      expect(FaceTracker.rotationDegrees(90, false, 270), 180);
     });
   });
 }

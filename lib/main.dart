@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'services/audio_engine.dart';
 import 'state/piano_controller.dart';
 import 'state/settings_controller.dart';
-import 'screens/home_screen.dart';
+import 'screens/gesture_screen.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -52,7 +52,9 @@ class ArSynthApp extends StatelessWidget {
         title: 'AR Synth',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.dark,
-        home: const HomeScreen(),
+        // Launch straight into the camera instrument; Settings is reachable from
+        // its app bar. The old landing screen (HomeScreen) is no longer routed.
+        home: const GestureScreen(),
       ),
     );
   }

@@ -12,6 +12,7 @@ import '../models/music.dart';
 import '../models/synth_settings.dart';
 import '../services/gesture_mapper.dart';
 import '../services/hand_tracking_service.dart';
+import '../services/update_service.dart';
 import '../state/piano_controller.dart';
 import '../state/settings_controller.dart';
 import '../theme.dart';
@@ -21,6 +22,8 @@ import '../widgets/hand_overlay.dart';
 import '../widgets/note_ripple_painter.dart';
 import '../widgets/piano_keyboard.dart';
 import '../widgets/synth_controls.dart';
+import '../widgets/update_dialog.dart';
+import 'settings_screen.dart';
 
 /// Camera hand-gesture instrument. Streams frames through the hand tracker,
 /// maps them to notes via [GestureMapper], and plays them through the
@@ -37,6 +40,7 @@ class _GestureScreenState extends State<GestureScreen>
     with WidgetsBindingObserver, TickerProviderStateMixin {
   final HandTrackingService _service = HandTrackingService();
   final GestureMapper _mapper = GestureMapper();
+  final UpdateService _updates = UpdateService();
   StreamSubscription<HandFrame>? _sub;
   StreamSubscription<FaceFrame>? _faceSub;
 
@@ -63,7 +67,29 @@ class _GestureScreenState extends State<GestureScreen>
     _ticker = createTicker(_onTick)..start();
     _sub = _service.frames.listen(_onFrame);
     _faceSub = _service.faces.listen(_onFace);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _start();
+      // Check for an app update silently on launch (this is now the entry
+      // screen); only interrupt the user if there is actually a newer build.
+      _checkForUpdate();
+    });
+  }
+
+  Future<void> _checkForUpdate() async {
+    try {
+      final UpdateInfo? update = await _updates.checkForUpdate();
+      if (!mounted || update == null) return;
+      await UpdateDialog.show(context, update: update, service: _updates);
+    } catch (_) {
+      // Update checks are best-effort; never block play on them.
+    }
+  }
+
+  Future<void> _flipCamera() async {
+    if (!_service.hasMultipleCameras) return;
+    setState(() => _starting = true);
+    await _service.switchCamera();
+    if (mounted) setState(() => _starting = false);
   }
 
   void _onFace(FaceFrame face) {
@@ -201,6 +227,7 @@ class _GestureScreenState extends State<GestureScreen>
     _sub?.cancel();
     _faceSub?.cancel();
     _service.dispose();
+    _updates.dispose();
     _piano?.clearGesture();
     super.dispose();
   }
@@ -261,10 +288,26 @@ class _GestureScreenState extends State<GestureScreen>
                 ),
             ],
           ),
+          if (_service.hasMultipleCameras)
+            IconButton(
+              icon: const Icon(Icons.cameraswitch),
+              tooltip: _service.usingFrontCamera
+                  ? 'Switch to back camera'
+                  : 'Switch to front camera',
+              onPressed: _starting ? null : _flipCamera,
+            ),
           IconButton(
             icon: const Icon(Icons.tune),
             tooltip: 'Synth controls',
             onPressed: _openSynthSheet,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                  builder: (_) => const SettingsScreen()),
+            ),
           ),
         ],
       ),
