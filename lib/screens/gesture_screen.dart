@@ -50,6 +50,7 @@ class _GestureScreenState extends State<GestureScreen>
   FaceFrame _face = const FaceFrame.empty();
   GestureMode? _lastMode;
   bool _starting = true;
+  bool _paused = false;
 
   PianoController? _piano;
   SettingsController? _settingsController;
@@ -85,10 +86,38 @@ class _GestureScreenState extends State<GestureScreen>
     try {
       final UpdateInfo? update = await _updates.checkForUpdate();
       if (!mounted || update == null) return;
-      await UpdateDialog.show(context, update: update, service: _updates);
+      // Free the camera while the (large) APK downloads/installs — no reason to
+      // burn battery on the preview behind a modal the user is reading.
+      await _pauseCamera();
+      if (!mounted) return;
+      final bool? installed =
+          await UpdateDialog.show(context, update: update, service: _updates);
+      // If the installer didn't launch, the user stays in the app — resume play.
+      if (mounted && installed != true) await _start();
     } catch (_) {
       // Update checks are best-effort; never block play on them.
+      if (mounted && _paused) await _start();
     }
+  }
+
+  /// Opens Settings with the camera stopped (you're configuring, not playing),
+  /// then resumes tracking on return. Also means the manual update check that
+  /// lives in Settings runs with the camera already off.
+  Future<void> _openSettings() async {
+    await _pauseCamera();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+    );
+    if (mounted) await _start();
+  }
+
+  /// Stops the camera + hand/face tracking and releases the wakelock, showing a
+  /// lightweight "paused" state. Resumed via [_start].
+  Future<void> _pauseCamera() async {
+    WakelockPlus.disable();
+    await _service.stop();
+    if (mounted) setState(() => _paused = true);
   }
 
   Future<void> _flipCamera() async {
@@ -173,7 +202,10 @@ class _GestureScreenState extends State<GestureScreen>
   }
 
   Future<void> _start() async {
-    setState(() => _starting = true);
+    setState(() {
+      _starting = true;
+      _paused = false;
+    });
     final bool ok = await _service.start();
     // Keep the screen awake while the camera instrument is running.
     if (ok) {
@@ -311,10 +343,7 @@ class _GestureScreenState extends State<GestureScreen>
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                  builder: (_) => const SettingsScreen()),
-            ),
+            onPressed: _openSettings,
           ),
         ],
       ),
@@ -331,6 +360,19 @@ class _GestureScreenState extends State<GestureScreen>
     final TrackingStatus status = _service.status;
     final CameraController? controller = _service.controller;
 
+    if (_paused) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(Icons.pause_circle_outline, size: 48, color: Colors.white38),
+            SizedBox(height: 12),
+            Text('Camera paused to save battery',
+                style: TextStyle(color: Colors.white54)),
+          ],
+        ),
+      );
+    }
     if (_starting) {
       return const Center(child: CircularProgressIndicator());
     }
