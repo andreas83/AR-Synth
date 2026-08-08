@@ -67,8 +67,23 @@ class _GestureScreenState extends State<GestureScreen>
 
   void _onFace(FaceFrame face) {
     if (!mounted) return;
-    _piano?.applyFaceModulation(face);
-    setState(() => _face = face);
+    final SynthSettings settings =
+        _settingsController?.settings ?? const SynthSettings();
+    if (settings.gestureMode == GestureMode.face) {
+      // Face mode: the face plays the synth.
+      final GestureOutput output = _mapper.mapFace(face, settings);
+      _piano?.applyGesture(output);
+      if (settings.visualizerEnabled) _spawnRipples(output);
+      setState(() {
+        _face = face;
+        _output = output;
+        _frame = const HandFrame.empty(); // no hand skeleton in face mode
+      });
+    } else {
+      // Other modes: the face just modulates a parameter.
+      _piano?.applyFaceModulation(face);
+      setState(() => _face = face);
+    }
   }
 
   void _onTick(Duration elapsed) {
@@ -128,10 +143,15 @@ class _GestureScreenState extends State<GestureScreen>
     if (settings.gestureMode != _lastMode) {
       _lastMode = settings.gestureMode;
       _mapper.reset();
+      _piano?.clearGesture(); // stop any notes lingering from the previous mode
     }
-    // Toggle the extra face inference on the shared camera stream to match the
-    // current setting.
-    _service.faceEnabled = settings.faceControlEnabled;
+    // Face detection runs when face-modulation is on OR we're in Face play mode.
+    _service.faceEnabled =
+        settings.faceControlEnabled || settings.gestureMode == GestureMode.face;
+
+    // In Face mode the notes come from the face stream (see _onFace); ignore
+    // hand frames for playing so the two sources don't fight.
+    if (settings.gestureMode == GestureMode.face) return;
 
     final GestureOutput output = _mapper.map(frame, settings);
     _piano?.applyGesture(output);
@@ -279,27 +299,30 @@ class _GestureScreenState extends State<GestureScreen>
             child: Center(
               child: AspectRatio(
                 aspectRatio: 1 / controller.value.aspectRatio,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: <Widget>[
-                    RotatedBox(
-                      quarterTurns: s.cameraQuarterTurns % 4,
-                      child: controller.buildPreview(),
-                    ),
-                    CustomPaint(
-                      painter:
-                          HandOverlayPainter(frame: _frame, output: _output),
-                    ),
-                    if (s.visualizerEnabled)
-                      RepaintBoundary(
-                        child: CustomPaint(
-                          painter: NoteRipplePainter(
-                            ripples: _ripples,
-                            clockMs: _clockMs,
+                // Rotate the preview AND its overlays as one group so the hand
+                // skeleton / ripples stay locked to the camera image at every
+                // rotation (the rotate button now turns them together).
+                child: RotatedBox(
+                  quarterTurns: s.cameraQuarterTurns % 4,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      controller.buildPreview(),
+                      CustomPaint(
+                        painter:
+                            HandOverlayPainter(frame: _frame, output: _output),
+                      ),
+                      if (s.visualizerEnabled)
+                        RepaintBoundary(
+                          child: CustomPaint(
+                            painter: NoteRipplePainter(
+                              ripples: _ripples,
+                              clockMs: _clockMs,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -419,9 +442,13 @@ class _StatusBar extends StatelessWidget {
     if (output.thereminVolume != null) {
       chips.add('vol ${(output.thereminVolume! * 100).round()}%');
     }
-    if (settings.faceControlEnabled) {
+    if (settings.faceControlEnabled ||
+        settings.gestureMode == GestureMode.face) {
       if (face.present) {
-        final double v = face.signal(settings.faceSignal) ?? 0.0;
+        final FaceSignal sig = settings.gestureMode == GestureMode.face
+            ? FaceSignal.mouthOpen
+            : settings.faceSignal;
+        final double v = face.signal(sig) ?? 0.0;
         chips.add('face ${(v * 100).round()}%');
       } else {
         chips.add('no face');

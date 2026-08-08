@@ -15,13 +15,15 @@ gestures into music.
 
 ## Features
 
-- **Camera hand-gesture instrument** with three selectable modes:
+- **Camera gesture instrument** with four selectable modes:
   - **Air Piano** — fingertips hover over the keyboard; push a finger down past
     the on-screen "press line" to play the key beneath it.
   - **Hand Poses** — hold a recognised pose (fist, point, peace, open hand,
     thumbs up); each fires a note or chord.
   - **Theremin** — one hand's height sweeps pitch (quantized to a scale of your
     choice), the other hand's height controls volume.
+  - **Face** — tilt your head to choose the pitch (quantized to your scale) and
+    open your mouth to sound it; a hands-free face-theremin.
 - **Two switchable sound engines:**
   - **Synth** — real-time oscillators (sine / square / saw / triangle) with a
     full **ADSR** envelope and **reverb / echo** effects (via `flutter_soloud`).

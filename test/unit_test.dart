@@ -215,6 +215,31 @@ void main() {
           .signal(FaceSignal.mouthOpen), 0.4);
     });
   });
+
+  group('face play-mode mapping', () {
+    final GestureMapper mapper = GestureMapper();
+
+    test('silent with no face or a closed mouth', () {
+      expect(mapper.mapFace(const FaceFrame.empty(), const SynthSettings())
+          .heldNotes, isEmpty);
+      expect(mapper
+          .mapFace(const FaceFrame(present: true, mouthOpen: 0.0),
+              const SynthSettings())
+          .heldNotes, isEmpty);
+    });
+
+    test('open mouth sounds a note; head tilt raises the pitch', () {
+      const SynthSettings s = SynthSettings(scaleName: 'Chromatic', keyRoot: 0);
+      final GestureOutput low = mapper.mapFace(
+          const FaceFrame(present: true, mouthOpen: 0.8, tilt: -1.0), s);
+      final GestureOutput high = mapper.mapFace(
+          const FaceFrame(present: true, mouthOpen: 0.8, tilt: 1.0), s);
+      expect(low.heldNotes, isNotEmpty);
+      expect(high.heldNotes, isNotEmpty);
+      expect(high.heldNotes.first.midi, greaterThan(low.heldNotes.first.midi));
+      expect(low.thereminVolume, isNotNull);
+    });
+  });
 }
 
 /// Builds a crude but valid 21-landmark hand pointing up from a wrist at
