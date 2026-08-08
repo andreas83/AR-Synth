@@ -1,3 +1,4 @@
+import '../models/face_data.dart';
 import '../models/hand_data.dart';
 import '../models/music.dart';
 import '../models/synth_settings.dart';
@@ -137,7 +138,38 @@ class GestureMapper {
       GestureMode.airPiano => _mapAirPiano(frame, settings),
       GestureMode.discretePoses => _mapDiscrete(frame, settings),
       GestureMode.theremin => _mapTheremin(frame, settings),
+      // Face mode is driven by the face stream, not hand frames.
+      GestureMode.face => GestureOutput.empty,
     };
+  }
+
+  /// Maps a [FaceFrame] to notes for [GestureMode.face]: head tilt selects the
+  /// pitch (quantized to the chosen scale) and mouth-openness gates + sets the
+  /// volume. Pure — safe to unit-test.
+  GestureOutput mapFace(FaceFrame face, SynthSettings settings) {
+    if (!face.present) return GestureOutput.empty;
+    const int midiLow = 48; // C3
+    const int midiHigh = 72; // C5
+    final List<int> scale =
+        kScales[settings.scaleName] ?? kScales['Chromatic']!;
+    final int root = ((settings.keyRoot % 12) + 12) % 12;
+
+    // Head roll (-1..1) -> 0..1 -> pitch across the range.
+    final double t = ((face.tilt.clamp(-1.0, 1.0)) + 1.0) / 2.0;
+    final int rawMidi = (midiLow + t * (midiHigh - midiLow)).round();
+    final int midi = quantizeToScale(rawMidi, scale, rootPitchClass: root);
+
+    final bool sounding = face.mouthOpen > 0.15;
+    final double volume = (0.2 + face.mouthOpen).clamp(0.0, 1.0);
+    final Note note = Note(midi);
+
+    return GestureOutput(
+      heldNotes: sounding ? <Note>{note} : const <Note>{},
+      thereminVolume: sounding ? volume : null,
+      cursors: <FingerCursor>[
+        FingerCursor(x: t, y: 0.3, colorIndex: 1, note: note, pressing: sounding),
+      ],
+    );
   }
 
   // -- Air piano --------------------------------------------------------------

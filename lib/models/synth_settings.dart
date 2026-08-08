@@ -38,6 +38,10 @@ enum GestureMode {
   /// Dominant hand height sweeps pitch (optionally quantized); the other hand
   /// height controls volume. A theremin-style continuous instrument.
   theremin,
+
+  /// Play with your face: tilt your head to choose pitch, open your mouth to
+  /// sound the note. Uses the front-camera face tracker.
+  face,
 }
 
 extension GestureModeLabel on GestureMode {
@@ -45,6 +49,7 @@ extension GestureModeLabel on GestureMode {
         GestureMode.airPiano => 'Air Piano',
         GestureMode.discretePoses => 'Hand Poses',
         GestureMode.theremin => 'Theremin',
+        GestureMode.face => 'Face',
       };
 
   String get description => switch (this) {
@@ -54,6 +59,8 @@ extension GestureModeLabel on GestureMode {
           'Hold a pose — fist, point, peace, open hand, thumbs up — to trigger notes.',
         GestureMode.theremin =>
           'Raise/lower one hand for pitch, the other for volume.',
+        GestureMode.face =>
+          'Tilt your head to choose pitch, open your mouth to play the note.',
       };
 }
 
