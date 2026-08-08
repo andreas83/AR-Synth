@@ -150,6 +150,61 @@ void main() {
     });
   });
 
+  group('handpan layout', () {
+    test('Ding sits an octave below the keyboard base, transposed by key', () {
+      const SynthSettings c = SynthSettings(startOctave: 4, keyRoot: 0);
+      // Keyboard base for start octave 4 is C4 (60); the Ding is an octave down.
+      expect(GestureMapper.handpanDingMidi(c), 48); // C3
+      const SynthSettings d = SynthSettings(startOctave: 4, keyRoot: 2);
+      expect(GestureMapper.handpanDingMidi(d), 50); // D3
+    });
+
+    test('field count matches the tuning, with the Ding centered first', () {
+      const SynthSettings s = SynthSettings(handpanTuning: 'Kurd 9');
+      final List<HandpanField> fields = GestureMapper.handpanFields(s);
+      expect(fields.length, kHandpanTunings['Kurd 9']!.length); // 9
+      expect(fields.first.isDing, isTrue);
+      expect(fields.first.x, closeTo(0.5, 1e-9));
+      expect(fields.first.y, closeTo(0.5, 1e-9));
+      expect(fields.where((HandpanField f) => f.isDing).length, 1);
+    });
+
+    test('field pitches follow the tuning offsets from the Ding', () {
+      const SynthSettings s = SynthSettings(handpanTuning: 'Kurd 9');
+      final int ding = GestureMapper.handpanDingMidi(s);
+      final List<HandpanField> fields = GestureMapper.handpanFields(s);
+      final List<int> offsets = kHandpanTunings['Kurd 9']!;
+      for (int i = 0; i < fields.length; i++) {
+        expect(fields[i].note.midi, ding + offsets[i]);
+      }
+    });
+
+    test('ring fields stay on the pan and clear of the center', () {
+      const SynthSettings s = SynthSettings(handpanTuning: 'Celtic Minor 9');
+      for (final HandpanField f
+          in GestureMapper.handpanFields(s).where((HandpanField f) => !f.isDing)) {
+        expect(f.x, inInclusiveRange(0.0, 1.0));
+        expect(f.y, inInclusiveRange(0.0, 1.0));
+        final double d = math.sqrt(math.pow(f.x - 0.5, 2) + math.pow(f.y - 0.5, 2));
+        expect(d, greaterThan(0.2)); // never overlaps the Ding
+      }
+    });
+
+    test('hit test finds the field under a point, else -1', () {
+      const SynthSettings s = SynthSettings(handpanTuning: 'Kurd 9');
+      final List<HandpanField> fields = GestureMapper.handpanFields(s);
+      // Dead center lands on the Ding (index 0).
+      expect(GestureMapper.handpanFieldAt(fields, 0.5, 0.5), 0);
+      // A far corner is off every field.
+      expect(GestureMapper.handpanFieldAt(fields, 0.02, 0.02), -1);
+      // A point right on a ring field's center resolves to that field.
+      final HandpanField ring =
+          fields.firstWhere((HandpanField f) => !f.isDing);
+      expect(GestureMapper.handpanFieldAt(fields, ring.x, ring.y),
+          fields.indexOf(ring));
+    });
+  });
+
   group('arpeggiator helpers', () {
     test('step duration follows tempo + note division', () {
       expect(arpStepDuration(120, ArpRate.quarter).inMilliseconds, 500);

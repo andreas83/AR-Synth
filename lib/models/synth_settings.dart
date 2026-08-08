@@ -42,6 +42,11 @@ enum GestureMode {
   /// Play with your face: tilt your head to choose pitch, open your mouth to
   /// sound the note. Uses the front-camera face tracker.
   face,
+
+  /// A handpan (hang drum): tone fields are laid out in a ring around a central
+  /// Ding; tap a field in the air to strike its note. A percussive, ringing
+  /// melodic-drum mode.
+  handpan,
 }
 
 extension GestureModeLabel on GestureMode {
@@ -50,6 +55,7 @@ extension GestureModeLabel on GestureMode {
         GestureMode.discretePoses => 'Hand Poses',
         GestureMode.theremin => 'Theremin',
         GestureMode.face => 'Face',
+        GestureMode.handpan => 'Handpan',
       };
 
   String get description => switch (this) {
@@ -61,6 +67,8 @@ extension GestureModeLabel on GestureMode {
           'Raise/lower one hand for pitch, the other for volume.',
         GestureMode.face =>
           'Tilt your head to choose pitch, open your mouth to play the note.',
+        GestureMode.handpan =>
+          'Tap the tone fields of a handpan in the air to strike its notes.',
       };
 }
 
@@ -103,6 +111,12 @@ class Adsr {
     );
   }
 }
+
+/// Percussive, ringing amplitude envelope for struck instruments (handpan).
+/// An instant attack, a long ring-down and no sustain, so each tap sounds once
+/// and decays on its own like a struck steel tongue.
+const Adsr kHandpanEnvelope =
+    Adsr(attack: 0.002, decay: 1.8, sustain: 0.0, release: 0.4);
 
 /// Arpeggiator note-step patterns.
 enum ArpPattern { up, down, updown, random }
@@ -149,6 +163,7 @@ class SynthSettings {
     this.gestureMode = GestureMode.airPiano,
     this.gestureSensitivity = 0.5,
     this.thereminScale = 'Pentatonic',
+    this.handpanTuning = 'Kurd 9',
     this.startOctave = 4,
     this.octaves = 2,
     this.cameraQuarterTurns = 1,
@@ -197,6 +212,9 @@ class SynthSettings {
 
   /// Scale name (see [kScales]) used to quantize theremin pitch.
   final String thereminScale;
+
+  /// Handpan tuning name (see [kHandpanTunings]) that lays out the tone fields.
+  final String handpanTuning;
 
   /// Lowest octave shown on the keyboard.
   final int startOctave;
@@ -260,6 +278,7 @@ class SynthSettings {
     GestureMode? gestureMode,
     double? gestureSensitivity,
     String? thereminScale,
+    String? handpanTuning,
     int? startOctave,
     int? octaves,
     int? cameraQuarterTurns,
@@ -294,6 +313,7 @@ class SynthSettings {
       gestureMode: gestureMode ?? this.gestureMode,
       gestureSensitivity: gestureSensitivity ?? this.gestureSensitivity,
       thereminScale: thereminScale ?? this.thereminScale,
+      handpanTuning: handpanTuning ?? this.handpanTuning,
       startOctave: startOctave ?? this.startOctave,
       octaves: octaves ?? this.octaves,
       cameraQuarterTurns: cameraQuarterTurns ?? this.cameraQuarterTurns,
@@ -333,6 +353,7 @@ class SynthSettings {
         'gestureMode': gestureMode.name,
         'gestureSensitivity': gestureSensitivity,
         'thereminScale': thereminScale,
+        'handpanTuning': handpanTuning,
         'startOctave': startOctave,
         'octaves': octaves,
         'cameraQuarterTurns': cameraQuarterTurns,
@@ -386,6 +407,7 @@ class SynthSettings {
       gestureSensitivity:
           (json['gestureSensitivity'] as num?)?.toDouble() ?? 0.5,
       thereminScale: json['thereminScale'] as String? ?? 'Pentatonic',
+      handpanTuning: json['handpanTuning'] as String? ?? 'Kurd 9',
       startOctave: (json['startOctave'] as num?)?.toInt() ?? 4,
       octaves: (json['octaves'] as num?)?.toInt() ?? 2,
       cameraQuarterTurns: (json['cameraQuarterTurns'] as num?)?.toInt() ?? 1,
