@@ -99,6 +99,7 @@ class SynthControls extends StatelessWidget {
           _label('Effects'),
           _slider('Reverb', s.reverb, (double v) => c.setReverb(v)),
           _slider('Echo', s.echo, (double v) => c.setEcho(v)),
+          _slider('Distortion', s.distortion, (double v) => c.setDistortion(v)),
 
           const Divider(height: 32),
           _label('Low-pass filter'),
@@ -115,6 +116,17 @@ class SynthControls extends StatelessWidget {
           ],
           _switchRow('Pinch → cutoff (free hand)', s.pinchModEnabled,
               c.setPinchModEnabled),
+          _switchRow('Pan by hand position', s.panEnabled, c.setPanEnabled),
+          _switchRow('Depth (push/pull)', s.depthModEnabled,
+              c.setDepthModEnabled),
+          if (s.depthModEnabled)
+            _dropdown<DepthTarget>(
+              'Depth controls',
+              s.depthTarget,
+              DepthTarget.values,
+              (DepthTarget v) => v.label,
+              c.setDepthTarget,
+            ),
 
           const Divider(height: 32),
           _label('Performance'),

@@ -38,6 +38,8 @@ class GestureOutput {
     this.poses = const <HandPose>[],
     this.thereminVolume,
     this.pinchModulation,
+    this.pan,
+    this.depthModulation,
     this.pressLineY,
     this.pitchHandY,
     this.volumeHandY,
@@ -54,6 +56,14 @@ class GestureOutput {
   /// Normalized 0..1 modulation from the non-playing hand's pinch (null when no
   /// modulator hand is present / pinch modulation is disabled).
   final double? pinchModulation;
+
+  /// Stereo pan -1..1 from a playing hand's horizontal position (null when pan
+  /// is disabled or no hand is playing).
+  final double? pan;
+
+  /// Normalized 0..1 push/pull depth from a hand's distance to the camera (null
+  /// when depth modulation is disabled or no modulator hand is present).
+  final double? depthModulation;
 
   /// Fingertip cursors for the overlay.
   final List<FingerCursor> cursors;
@@ -88,6 +98,13 @@ class GestureMapper {
   /// must move this far past a lane boundary before the note jumps lanes.
   static const double kLaneStickFrac = 0.25;
 
+  /// Hand-depth (push/pull) mapping bounds on the characteristic hand size
+  /// (wrist→middle-MCP, distance-invariant): a hand far from the camera reads
+  /// small (=> 0.0), a hand pushed close reads large (=> 1.0). Device/framing
+  /// dependent — tune per device.
+  static const double kDepthScaleFar = 0.10;
+  static const double kDepthScaleNear = 0.45;
+
   // -- Discrete-pose de-bounce, per detected hand slot --
   // A candidate pose must persist for `required` frames before it *replaces* the
   // locked pose, so a single mis-read frame never drops the current note.
@@ -110,6 +127,13 @@ class GestureMapper {
   final OneEuroFilter _thereminVolume =
       OneEuroFilter(minCutoff: 1.5, beta: 0.01);
 
+  // Hand-depth (push/pull) smoothing — hand size is noisier than fingertip y.
+  final OneEuroFilter _handDepth = OneEuroFilter(minCutoff: 1.0, beta: 0.02);
+
+  // Strum mode: current lane + horizontal smoothing.
+  int _strumLane = -1;
+  final OneEuroFilter _strumX = OneEuroFilter(minCutoff: 1.2, beta: 0.03);
+
   int? _prevMicros;
 
   void reset() {
@@ -127,6 +151,9 @@ class GestureMapper {
     }
     _thereminPitch.reset();
     _thereminVolume.reset();
+    _handDepth.reset();
+    _strumX.reset();
+    _strumLane = -1;
     _prevMicros = null;
   }
 
@@ -160,6 +187,16 @@ class GestureMapper {
     }
     return rawLane;
   }
+
+  /// Maps a normalized 0..1 horizontal position to a stereo pan in [-1, 1]
+  /// (0 = hard left, 1 = hard right). Pure + testable.
+  static double panFromX(double x) => (x.clamp(0.0, 1.0) * 2.0) - 1.0;
+
+  /// Maps a characteristic hand size to a 0 (far) .. 1 (near) push/pull depth
+  /// using the [kDepthScaleFar]/[kDepthScaleNear] bounds. Pure + testable.
+  static double depthFromScale(double handScale) =>
+      ((handScale - kDepthScaleFar) / (kDepthScaleNear - kDepthScaleFar))
+          .clamp(0.0, 1.0);
 
   /// Maps a fingertip's downward speed (normalized units per second, where y
   /// grows downward) to an attack velocity in [0.05, 1.0]. Pure + testable.
@@ -199,6 +236,7 @@ class GestureMapper {
       GestureMode.airPiano => _mapAirPiano(frame, settings),
       GestureMode.discretePoses => _mapDiscrete(frame, settings),
       GestureMode.theremin => _mapTheremin(frame, settings),
+      GestureMode.strum => _mapStrum(frame, settings),
       // Face mode is driven by the face stream, not hand frames.
       GestureMode.face => GestureOutput.empty,
     };
@@ -329,12 +367,37 @@ class GestureMapper {
       }
     }
 
+    // Pan from a playing hand's horizontal position.
+    double? pan;
+    if (settings.panEnabled) {
+      for (int slot = 0; slot < hands.length && slot < 2; slot++) {
+        if (pressingCount[slot] > 0 && hands[slot].isValid) {
+          pan = panFromX(hands[slot][kWrist].x);
+          break;
+        }
+      }
+    }
+
+    // Depth (push/pull) from the first non-playing hand's characteristic size.
+    double? depthMod;
+    if (settings.depthModEnabled) {
+      for (int slot = 0; slot < hands.length && slot < 2; slot++) {
+        if (pressingCount[slot] == 0 && hands[slot].isValid) {
+          depthMod = _handDepth.filter(
+              depthFromScale(FingerGeometry.handScale(hands[slot])), dt);
+          break;
+        }
+      }
+    }
+
     return GestureOutput(
       heldNotes: held,
       velocities: velocities,
       cursors: cursors,
       pressLineY: pressLineY,
       pinchModulation: pinchMod,
+      pan: pan,
+      depthModulation: depthMod,
     );
   }
 
@@ -448,11 +511,56 @@ class GestureMapper {
       thereminVolume: smoothVol,
       pitchHandY: py,
       volumeHandY: volumeHandY,
+      pan: settings.panEnabled ? panFromX(pitchHand[kIndexTip].x) : null,
+      depthModulation: settings.depthModEnabled
+          ? _handDepth.filter(
+              depthFromScale(FingerGeometry.handScale(pitchHand)), dt)
+          : null,
       cursors: <FingerCursor>[
         FingerCursor(
             x: pitchHand[kIndexTip].x, y: py, colorIndex: 1, note: Note(midi)),
         if (volumeHandY != null)
           FingerCursor(x: hands.first[kWrist].x, y: volumeHandY, colorIndex: 3),
+      ],
+    );
+  }
+
+  // -- Strum / harp -----------------------------------------------------------
+
+  /// Sweeps the right-most hand's index fingertip across the scale lanes (the
+  /// same lanes as Air Piano). The lane under the finger is held; moving to a
+  /// new lane releases the old note and sounds the next — a harp glissando.
+  GestureOutput _mapStrum(HandFrame frame, SynthSettings settings) {
+    final List<Note> lanes = airPianoLanes(settings);
+    if (lanes.isEmpty) return GestureOutput.empty;
+
+    final int nowMicros = DateTime.now().microsecondsSinceEpoch;
+    final double dt =
+        _prevMicros == null ? 0.0 : (nowMicros - _prevMicros!) / 1e6;
+    _prevMicros = nowMicros;
+
+    final Hand hand = _sortedHands(frame).last;
+    if (!hand.isValid) {
+      _strumLane = -1;
+      return GestureOutput.empty;
+    }
+
+    final HandLandmark tip = hand[kIndexTip];
+    final double x = _strumX.filter(tip.x.clamp(0.0, 1.0), dt);
+    final int lane = stickyLane(
+      tipX: x,
+      laneCount: lanes.length,
+      prevLane: _strumLane,
+      wasPressed: _strumLane >= 0,
+    );
+    _strumLane = lane;
+    final Note note = lanes[lane];
+
+    return GestureOutput(
+      heldNotes: <Note>{note},
+      cursors: <FingerCursor>[
+        FingerCursor(
+            x: tip.x, y: tip.y, colorIndex: 1, note: note, pressing: true),
       ],
     );
   }

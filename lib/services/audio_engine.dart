@@ -48,6 +48,13 @@ class AudioEngine {
 
   bool _reverbActive = false;
   bool _echoActive = false;
+  bool _distortionActive = false;
+
+  /// Current live stereo pan (-1 = left .. 1 = right) and whether a live source
+  /// (hand position / face) is driving it. Pan is per-voice in SoLoud, so this
+  /// is fanned out to every active voice and re-applied to new voices.
+  double _pan = 0.0;
+  bool _panActive = false;
 
   /// When non-null, face modulation is live-overriding the reverb wet amount.
   double? _liveReverbWet;
@@ -99,7 +106,9 @@ class AudioEngine {
         } catch (_) {}
       }
     }
-    if (settings.reverb != previous.reverb || settings.echo != previous.echo) {
+    if (settings.reverb != previous.reverb ||
+        settings.echo != previous.echo ||
+        settings.distortion != previous.distortion) {
       _applyEffects();
     }
     if (settings.filterEnabled != previous.filterEnabled ||
@@ -164,6 +173,33 @@ class AudioEngine {
     _applyEffects();
   }
 
+  /// Live-sets the stereo pan from a normalized -1..1 control (hand position /
+  /// face). SoLoud pan is per-voice, so this fans out to every active voice and
+  /// [noteOn] re-applies it to new voices while [_panActive].
+  void setLivePan(double pan) {
+    _pan = pan.clamp(-1.0, 1.0);
+    _panActive = true;
+    if (!_initialized) return;
+    for (final _Voice v in _voices.values) {
+      try {
+        _soloud.setPan(v.handle, _pan);
+      } catch (_) {}
+    }
+  }
+
+  /// Ends live pan control and recenters every voice.
+  void clearLivePan() {
+    if (!_panActive) return;
+    _panActive = false;
+    _pan = 0.0;
+    if (!_initialized) return;
+    for (final _Voice v in _voices.values) {
+      try {
+        _soloud.setPan(v.handle, 0.0);
+      } catch (_) {}
+    }
+  }
+
   /// The effective MIDI number after applying the octave shift.
   int _effectiveMidi(Note note) => note.midi + _settings.octaveShift * 12;
 
@@ -198,6 +234,13 @@ class AudioEngine {
 
     final _Voice voice = _Voice(handle, peak);
     _voices[midi] = voice;
+
+    // A note started mid-pan must inherit the current pan, not play centered.
+    if (_panActive) {
+      try {
+        _soloud.setPan(handle, _pan);
+      } catch (_) {}
+    }
 
     // Attack: ramp from silence to peak.
     final Duration attack = _secs(env.attack);
@@ -376,6 +419,23 @@ class AudioEngine {
     } catch (e) {
       debugPrint('AudioEngine: echo unavailable on this version: $e');
     }
+    // Distortion (wave shaper) — drive/wet both follow the single 0..1 amount.
+    try {
+      if (_settings.distortion > 0.001) {
+        if (!_distortionActive) {
+          filters.waveShaperFilter.activate();
+          _distortionActive = true;
+        }
+        final double amt = _settings.distortion.clamp(0.0, 1.0);
+        filters.waveShaperFilter.wet.value = amt;
+        filters.waveShaperFilter.amount.value = amt;
+      } else if (_distortionActive) {
+        filters.waveShaperFilter.deactivate();
+        _distortionActive = false;
+      }
+    } catch (e) {
+      debugPrint('AudioEngine: distortion unavailable on this version: $e');
+    }
   }
 
   // -- Low-pass filter + LFO --------------------------------------------------
@@ -480,6 +540,8 @@ class AudioEngine {
         SynthWave.square => WaveForm.square,
         SynthWave.saw => WaveForm.saw,
         SynthWave.triangle => WaveForm.triangle,
+        SynthWave.bounce => WaveForm.bounce,
+        SynthWave.jaws => WaveForm.jaws,
       };
 
   static double _pitchRatio(int semitones) {

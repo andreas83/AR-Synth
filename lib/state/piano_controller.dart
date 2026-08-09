@@ -29,6 +29,8 @@ class PianoController extends ChangeNotifier {
   bool _liveVolumeAdjusted = false;
   bool _cutoffAdjusted = false;
   bool _faceAdjusted = false;
+  bool _panAdjusted = false;
+  bool _depthAdjusted = false;
 
   /// All notes currently sounding (touch ∪ gesture ∪ arp), for highlighting.
   Set<Note> get activeNotes {
@@ -121,7 +123,48 @@ class PianoController extends ChangeNotifier {
       _cutoffAdjusted = false;
     }
 
+    // Live stereo pan from a playing hand's horizontal position.
+    if (output.pan != null) {
+      _audio.setLivePan(output.pan!);
+      _panAdjusted = true;
+    } else if (_panAdjusted) {
+      _audio.clearLivePan();
+      _panAdjusted = false;
+    }
+
+    // Depth (push/pull) modulation. Yields to the existing sources for shared
+    // targets: pinch beats depth on cutoff, theremin beats depth on volume.
+    if (output.depthModulation != null) {
+      final double v = output.depthModulation!;
+      switch (_settings.settings.depthTarget) {
+        case DepthTarget.cutoff:
+          if (!_cutoffAdjusted) {
+            _audio.setLiveCutoff(v);
+            _depthAdjusted = true;
+          }
+        case DepthTarget.volume:
+          if (!_liveVolumeAdjusted) {
+            _audio.setLiveMasterVolume(_settings.settings.masterVolume * v);
+            _depthAdjusted = true;
+          }
+      }
+    } else if (_depthAdjusted) {
+      _clearDepthTarget(_settings.settings.depthTarget);
+      _depthAdjusted = false;
+    }
+
     if (changed) notifyListeners();
+  }
+
+  void _clearDepthTarget(DepthTarget target) {
+    switch (target) {
+      case DepthTarget.cutoff:
+        if (!_cutoffAdjusted) _audio.clearLiveCutoff();
+      case DepthTarget.volume:
+        if (!_liveVolumeAdjusted) {
+          _audio.setLiveMasterVolume(_settings.settings.masterVolume);
+        }
+    }
   }
 
   /// Applies one frame of face-expression modulation to the chosen target.
@@ -151,6 +194,10 @@ class PianoController extends ChangeNotifier {
         if (_liveVolumeAdjusted) return; // theremin wins
         _audio.setLiveMasterVolume(s.masterVolume * (0.15 + 0.85 * value));
         _faceAdjusted = true;
+      case FaceTarget.pan:
+        if (_panAdjusted) return; // hand pan wins
+        _audio.setLivePan((value * 2.0) - 1.0); // 0..1 -> -1..1
+        _faceAdjusted = true;
     }
   }
 
@@ -164,6 +211,8 @@ class PianoController extends ChangeNotifier {
         if (!_liveVolumeAdjusted) {
           _audio.setLiveMasterVolume(_settings.settings.masterVolume);
         }
+      case FaceTarget.pan:
+        if (!_panAdjusted) _audio.clearLivePan();
     }
   }
 
@@ -188,6 +237,14 @@ class PianoController extends ChangeNotifier {
     if (_faceAdjusted) {
       _clearFaceTarget(_settings.settings.faceTarget);
       _faceAdjusted = false;
+    }
+    if (_panAdjusted) {
+      _audio.clearLivePan();
+      _panAdjusted = false;
+    }
+    if (_depthAdjusted) {
+      _clearDepthTarget(_settings.settings.depthTarget);
+      _depthAdjusted = false;
     }
   }
 

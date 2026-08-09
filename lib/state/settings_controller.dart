@@ -53,6 +53,8 @@ class SettingsController extends ChangeNotifier {
       _update(_settings.copyWith(octaveShift: shift.clamp(-3, 3)));
   void setReverb(double v) => _update(_settings.copyWith(reverb: v));
   void setEcho(double v) => _update(_settings.copyWith(echo: v));
+  void setDistortion(double v) =>
+      _update(_settings.copyWith(distortion: v.clamp(0.0, 1.0)));
   void setMasterVolume(double v) => _update(_settings.copyWith(masterVolume: v));
   void setGestureMode(GestureMode m) =>
       _update(_settings.copyWith(gestureMode: m));
@@ -80,6 +82,11 @@ class SettingsController extends ChangeNotifier {
       _update(_settings.copyWith(lfoDepth: v.clamp(0.0, 1.0)));
   void setPinchModEnabled(bool v) =>
       _update(_settings.copyWith(pinchModEnabled: v));
+  void setPanEnabled(bool v) => _update(_settings.copyWith(panEnabled: v));
+  void setDepthModEnabled(bool v) =>
+      _update(_settings.copyWith(depthModEnabled: v));
+  void setDepthTarget(DepthTarget t) =>
+      _update(_settings.copyWith(depthTarget: t));
 
   // Scale lock ---------------------------------------------------------------
   void setScaleName(String s) => _update(_settings.copyWith(scaleName: s));

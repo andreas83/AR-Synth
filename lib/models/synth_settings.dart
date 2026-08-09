@@ -3,13 +3,24 @@ import 'face_data.dart';
 export 'face_data.dart' show FaceSignal, FaceSignalLabel;
 
 /// Which synth parameter a face expression modulates.
-enum FaceTarget { cutoff, reverb, volume }
+enum FaceTarget { cutoff, reverb, volume, pan }
 
 extension FaceTargetLabel on FaceTarget {
   String get label => switch (this) {
         FaceTarget.cutoff => 'Filter cutoff',
         FaceTarget.reverb => 'Reverb',
         FaceTarget.volume => 'Volume',
+        FaceTarget.pan => 'Pan (L/R)',
+      };
+}
+
+/// Which synth parameter the hand-depth (push/pull) gesture modulates.
+enum DepthTarget { cutoff, volume }
+
+extension DepthTargetLabel on DepthTarget {
+  String get label => switch (this) {
+        DepthTarget.cutoff => 'Filter cutoff',
+        DepthTarget.volume => 'Volume',
       };
 }
 
@@ -23,7 +34,7 @@ enum SoundEngine {
 }
 
 /// Oscillator waveform for [SoundEngine.synth].
-enum SynthWave { sine, square, saw, triangle }
+enum SynthWave { sine, square, saw, triangle, bounce, jaws }
 
 /// How camera hand gestures are translated into notes.
 enum GestureMode {
@@ -42,6 +53,10 @@ enum GestureMode {
   /// Play with your face: tilt your head to choose pitch, open your mouth to
   /// sound the note. Uses the front-camera face tracker.
   face,
+
+  /// Sweep a fingertip across the scale lanes to pluck notes like a harp —
+  /// moving between lanes releases the old note and sounds the next.
+  strum,
 }
 
 extension GestureModeLabel on GestureMode {
@@ -50,6 +65,7 @@ extension GestureModeLabel on GestureMode {
         GestureMode.discretePoses => 'Hand Poses',
         GestureMode.theremin => 'Theremin',
         GestureMode.face => 'Face',
+        GestureMode.strum => 'Strum / Harp',
       };
 
   String get description => switch (this) {
@@ -61,6 +77,8 @@ extension GestureModeLabel on GestureMode {
           'Raise/lower one hand for pitch, the other for volume.',
         GestureMode.face =>
           'Tilt your head to choose pitch, open your mouth to play the note.',
+        GestureMode.strum =>
+          'Sweep a hand across the lanes to strum notes from the scale.',
       };
 }
 
@@ -85,6 +103,8 @@ extension GestureGuide on GestureMode {
           'Right-hand height = pitch · left-hand height = volume.',
         GestureMode.face =>
           'Tilt your head for pitch · open your mouth to play.',
+        GestureMode.strum =>
+          'Sweep a fingertip across the lanes to pluck the scale.',
       };
 
   /// The per-gesture breakdown shown in the guide sheet.
@@ -120,6 +140,14 @@ extension GestureGuide on GestureMode {
             GestureTip('Open mouth',
                 'Open your mouth to sound the note — wider is louder.'),
           ],
+        GestureMode.strum => const <GestureTip>[
+            GestureTip('Sweep to play',
+                'Move a fingertip across the lanes; each lane plucks the next note of your scale.'),
+            GestureTip('Glissando',
+                'Sweeping quickly runs up or down the scale like a harp glissando.'),
+            GestureTip('Arpeggiate',
+                'Turn on the arpeggiator to spread the held note into a rhythmic pattern.'),
+          ],
       };
 }
 
@@ -129,6 +157,8 @@ extension SynthWaveLabel on SynthWave {
         SynthWave.square => 'Square',
         SynthWave.saw => 'Saw',
         SynthWave.triangle => 'Triangle',
+        SynthWave.bounce => 'Bounce',
+        SynthWave.jaws => 'Jaws',
       };
 }
 
@@ -231,6 +261,10 @@ class SynthSettings {
     this.faceControlEnabled = false,
     this.faceSignal = FaceSignal.mouthOpen,
     this.faceTarget = FaceTarget.cutoff,
+    this.distortion = 0.0,
+    this.panEnabled = false,
+    this.depthModEnabled = false,
+    this.depthTarget = DepthTarget.cutoff,
   });
 
   final SoundEngine engine;
@@ -308,6 +342,16 @@ class SynthSettings {
   final FaceSignal faceSignal;
   final FaceTarget faceTarget;
 
+  /// Global wave-shaper distortion / drive, 0..1 (0 = clean).
+  final double distortion;
+
+  /// When true, a playing hand's horizontal position pans the mix left/right.
+  final bool panEnabled;
+
+  /// When true, pushing a hand toward the camera modulates [depthTarget] live.
+  final bool depthModEnabled;
+  final DepthTarget depthTarget;
+
   SynthSettings copyWith({
     SoundEngine? engine,
     SynthWave? wave,
@@ -341,6 +385,10 @@ class SynthSettings {
     bool? faceControlEnabled,
     FaceSignal? faceSignal,
     FaceTarget? faceTarget,
+    double? distortion,
+    bool? panEnabled,
+    bool? depthModEnabled,
+    DepthTarget? depthTarget,
   }) {
     return SynthSettings(
       engine: engine ?? this.engine,
@@ -375,6 +423,10 @@ class SynthSettings {
       faceControlEnabled: faceControlEnabled ?? this.faceControlEnabled,
       faceSignal: faceSignal ?? this.faceSignal,
       faceTarget: faceTarget ?? this.faceTarget,
+      distortion: distortion ?? this.distortion,
+      panEnabled: panEnabled ?? this.panEnabled,
+      depthModEnabled: depthModEnabled ?? this.depthModEnabled,
+      depthTarget: depthTarget ?? this.depthTarget,
     );
   }
 
@@ -414,6 +466,10 @@ class SynthSettings {
         'faceControlEnabled': faceControlEnabled,
         'faceSignal': faceSignal.name,
         'faceTarget': faceTarget.name,
+        'distortion': distortion,
+        'panEnabled': panEnabled,
+        'depthModEnabled': depthModEnabled,
+        'depthTarget': depthTarget.name,
       };
 
   factory SynthSettings.fromJson(Map<String, dynamic> json) {
@@ -471,6 +527,11 @@ class SynthSettings {
           () => FaceSignal.values.byName(json['faceSignal'] as String)),
       faceTarget: pick(FaceTarget.cutoff,
           () => FaceTarget.values.byName(json['faceTarget'] as String)),
+      distortion: (json['distortion'] as num?)?.toDouble() ?? 0.0,
+      panEnabled: json['panEnabled'] as bool? ?? false,
+      depthModEnabled: json['depthModEnabled'] as bool? ?? false,
+      depthTarget: pick(DepthTarget.cutoff,
+          () => DepthTarget.values.byName(json['depthTarget'] as String)),
     );
   }
 }

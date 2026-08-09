@@ -404,6 +404,73 @@ void main() {
     });
   });
 
+  group('new sound & gesture options', () {
+    test('panFromX maps 0..1 to -1..1 and clamps', () {
+      expect(GestureMapper.panFromX(0.0), -1.0);
+      expect(GestureMapper.panFromX(0.5), 0.0);
+      expect(GestureMapper.panFromX(1.0), 1.0);
+      expect(GestureMapper.panFromX(-0.5), -1.0); // clamped
+      expect(GestureMapper.panFromX(2.0), 1.0); // clamped
+    });
+
+    test('depthFromScale maps far/near to 0..1, monotonic + clamped', () {
+      expect(GestureMapper.depthFromScale(GestureMapper.kDepthScaleFar), 0.0);
+      expect(GestureMapper.depthFromScale(GestureMapper.kDepthScaleNear), 1.0);
+      expect(GestureMapper.depthFromScale(0.0), 0.0); // below far
+      expect(GestureMapper.depthFromScale(1.0), 1.0); // above near
+      final double mid = GestureMapper.depthFromScale(
+          (GestureMapper.kDepthScaleFar + GestureMapper.kDepthScaleNear) / 2);
+      expect(mid, closeTo(0.5, 1e-9));
+    });
+
+    test('strum sweep: a rightward hand plays a higher lane note', () {
+      const SynthSettings s = SynthSettings(gestureMode: GestureMode.strum);
+      Note play(double x) {
+        final GestureMapper m = GestureMapper();
+        final GestureOutput out = m.map(
+          HandFrame(
+            hands: <Hand>[_handWithIndexX(x)],
+            imageWidth: 100,
+            imageHeight: 100,
+          ),
+          s,
+        );
+        return out.heldNotes.single;
+      }
+
+      expect(play(0.05).midi, lessThan(play(0.95).midi));
+    });
+
+    test('new SynthWave / FaceTarget / DepthTarget values all have labels', () {
+      for (final SynthWave w in SynthWave.values) {
+        expect(w.label.trim(), isNotEmpty, reason: 'wave ${w.name}');
+      }
+      for (final FaceTarget t in FaceTarget.values) {
+        expect(t.label.trim(), isNotEmpty, reason: 'faceTarget ${t.name}');
+      }
+      for (final DepthTarget t in DepthTarget.values) {
+        expect(t.label.trim(), isNotEmpty, reason: 'depthTarget ${t.name}');
+      }
+    });
+
+    test('new settings survive a JSON round-trip', () {
+      const SynthSettings s = SynthSettings(
+        distortion: 0.5,
+        wave: SynthWave.jaws,
+        panEnabled: true,
+        depthModEnabled: true,
+        depthTarget: DepthTarget.volume,
+        faceTarget: FaceTarget.pan,
+      );
+      final SynthSettings r = SynthSettings.fromJson(s.toJson());
+      expect(r.distortion, 0.5);
+      expect(r.wave, SynthWave.jaws);
+      expect(r.panEnabled, isTrue);
+      expect(r.depthModEnabled, isTrue);
+      expect(r.depthTarget, DepthTarget.volume);
+      expect(r.faceTarget, FaceTarget.pan);
+    });
+  });
 }
 
 /// Builds a crude but valid 21-landmark hand pointing up from a wrist at
@@ -433,5 +500,15 @@ Hand _syntheticHand({required bool spread}) {
   lm[kThumbIp] = at(0.4, 0.75);
   lm[kThumbTip] = spread ? at(0.32, 0.72) : at(0.47, 0.74);
 
+  return Hand(landmarks: lm);
+}
+
+/// A minimal valid 21-landmark hand with its wrist and index fingertip at [x]
+/// (used to drive Strum-mode lane selection in tests).
+Hand _handWithIndexX(double x) {
+  final List<HandLandmark> lm =
+      List<HandLandmark>.filled(21, const HandLandmark(0.5, 0.5, 0));
+  lm[kWrist] = HandLandmark(x, 0.9, 0);
+  lm[kIndexTip] = HandLandmark(x, 0.5, 0);
   return Hand(landmarks: lm);
 }

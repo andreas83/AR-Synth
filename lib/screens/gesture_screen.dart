@@ -851,6 +851,7 @@ class _GestureModeButton extends StatelessWidget {
         GestureMode.discretePoses => Icons.back_hand,
         GestureMode.theremin => Icons.waves,
         GestureMode.face => Icons.face_retouching_natural,
+        GestureMode.strum => Icons.auto_awesome,
       };
 
   @override
