@@ -3,6 +3,7 @@ import '../models/hand_data.dart';
 import '../models/music.dart';
 import '../models/synth_settings.dart';
 import '../utils/finger_geometry.dart';
+import '../utils/one_euro_filter.dart';
 
 /// A fingertip cursor to visualise on top of the camera preview.
 class FingerCursor {
@@ -78,26 +79,86 @@ class GestureOutput {
 /// Holds a little per-mode state (pose de-bounce) so it must be reused across
 /// frames and [reset] when the mode changes.
 class GestureMapper {
-  // Discrete-pose de-bounce, per detected hand slot.
-  final List<HandPose> _stablePose = <HandPose>[HandPose.none, HandPose.none];
+  /// Press-line hysteresis band (normalized y): once a fingertip is pressing, it
+  /// must lift this far above the line to release, so hovering at the line does
+  /// not chatter the note on and off.
+  static const double kPressHysteresis = 0.05;
+
+  /// Lane stickiness margin as a fraction of a lane's width: a held fingertip
+  /// must move this far past a lane boundary before the note jumps lanes.
+  static const double kLaneStickFrac = 0.25;
+
+  // -- Discrete-pose de-bounce, per detected hand slot --
+  // A candidate pose must persist for `required` frames before it *replaces* the
+  // locked pose, so a single mis-read frame never drops the current note.
+  final List<HandPose> _poseCandidate = <HandPose>[HandPose.none, HandPose.none];
   final List<int> _poseStreak = <int>[0, 0];
+  final List<HandPose> _poseLocked = <HandPose>[HandPose.none, HandPose.none];
 
   // Air-piano velocity tracking: last-seen fingertip y per [handSlot][finger].
   final List<List<double?>> _prevTipY =
       List<List<double?>>.generate(2, (_) => List<double?>.filled(5, null));
+
+  // Air-piano press hysteresis + lane stickiness state, per [handSlot][finger].
+  final List<List<bool>> _fingerPressed =
+      List<List<bool>>.generate(2, (_) => List<bool>.filled(5, false));
+  final List<List<int>> _fingerLane =
+      List<List<int>>.generate(2, (_) => List<int>.filled(5, -1));
+
+  // Theremin continuous-signal smoothing (denoise + natural glide).
+  final OneEuroFilter _thereminPitch = OneEuroFilter(minCutoff: 1.0, beta: 0.03);
+  final OneEuroFilter _thereminVolume =
+      OneEuroFilter(minCutoff: 1.5, beta: 0.01);
+
   int? _prevMicros;
 
   void reset() {
-    for (int i = 0; i < _stablePose.length; i++) {
-      _stablePose[i] = HandPose.none;
+    for (int i = 0; i < _poseLocked.length; i++) {
+      _poseCandidate[i] = HandPose.none;
       _poseStreak[i] = 0;
+      _poseLocked[i] = HandPose.none;
     }
-    for (final List<double?> row in _prevTipY) {
-      for (int i = 0; i < row.length; i++) {
-        row[i] = null;
+    for (int s = 0; s < 2; s++) {
+      for (int f = 0; f < 5; f++) {
+        _prevTipY[s][f] = null;
+        _fingerPressed[s][f] = false;
+        _fingerLane[s][f] = -1;
       }
     }
+    _thereminPitch.reset();
+    _thereminVolume.reset();
     _prevMicros = null;
+  }
+
+  /// Press decision with hysteresis: not-yet-pressing fingers must reach
+  /// [pressLineY]; already-pressing fingers stay pressed until they lift a full
+  /// [kPressHysteresis] band above it. Pure + testable.
+  static bool pressWithHysteresis({
+    required bool wasPressed,
+    required double tipY,
+    required double pressLineY,
+  }) {
+    final double releaseLineY = pressLineY - kPressHysteresis;
+    return wasPressed ? tipY >= releaseLineY : tipY >= pressLineY;
+  }
+
+  /// Lane choice with stickiness: a finger that [wasPressed] keeps [prevLane]
+  /// until [tipX] moves a [kLaneStickFrac] margin past the lane boundary;
+  /// otherwise it tracks the lane directly under the fingertip. Pure + testable.
+  static int stickyLane({
+    required double tipX,
+    required int laneCount,
+    required int prevLane,
+    required bool wasPressed,
+  }) {
+    final int rawLane = (tipX * laneCount).floor().clamp(0, laneCount - 1);
+    if (!wasPressed || prevLane < 0 || prevLane >= laneCount) return rawLane;
+    final double laneWidth = 1.0 / laneCount;
+    final double center = (prevLane + 0.5) * laneWidth;
+    if ((tipX - center).abs() <= laneWidth * (0.5 + kLaneStickFrac)) {
+      return prevLane;
+    }
+    return rawLane;
   }
 
   /// Maps a fingertip's downward speed (normalized units per second, where y
@@ -200,20 +261,30 @@ class GestureMapper {
       for (int finger = 1; finger < 5; finger++) {
         if (!FingerGeometry.isFingerExtended(hand, finger)) {
           _prevTipY[slot][finger] = null; // reset when the finger retracts
+          _fingerPressed[slot][finger] = false;
+          _fingerLane[slot][finger] = -1;
           continue;
         }
         final HandLandmark tip = FingerGeometry.tip(hand, finger);
-        final int lane =
-            (tip.x * lanes.length).floor().clamp(0, lanes.length - 1);
+        final bool wasPressed = _fingerPressed[slot][finger];
+
+        // Hysteresis on the press line + stickiness on the lane both fight the
+        // frame-to-frame jitter in the raw landmarks (chatter and lane hopping).
+        final bool pressing = pressWithHysteresis(
+            wasPressed: wasPressed, tipY: tip.y, pressLineY: pressLineY);
+        final int lane = stickyLane(
+          tipX: tip.x,
+          laneCount: lanes.length,
+          prevLane: _fingerLane[slot][finger],
+          wasPressed: wasPressed && pressing,
+        );
         final Note note = lanes[lane];
-        final bool pressing = tip.y >= pressLineY;
         final double? prevY = _prevTipY[slot][finger];
-        final bool wasPressing = prevY != null && prevY >= pressLineY;
 
         if (pressing) {
           held.add(note);
           pressingCount[slot]++;
-          if (!wasPressing) {
+          if (!wasPressed) {
             // Note-on this frame — derive velocity from downward speed.
             double v = 1.0;
             if (settings.velocityEnabled) {
@@ -232,6 +303,8 @@ class GestureMapper {
           pressing: pressing,
         ));
         _prevTipY[slot][finger] = tip.y;
+        _fingerPressed[slot][finger] = pressing;
+        _fingerLane[slot][finger] = pressing ? lane : -1;
       }
     }
 
@@ -276,17 +349,22 @@ class GestureMapper {
     final List<HandPose> poses = <HandPose>[];
     final List<FingerCursor> cursors = <FingerCursor>[];
 
-    for (int i = 0; i < frame.hands.length && i < _stablePose.length; i++) {
+    for (int i = 0; i < frame.hands.length && i < _poseLocked.length; i++) {
       final Hand hand = frame.hands[i];
       final HandPose raw = classifyPose(hand);
-      if (raw == _stablePose[i]) {
+      // Count consecutive frames agreeing on a candidate pose.
+      if (raw == _poseCandidate[i]) {
         _poseStreak[i] = (_poseStreak[i] + 1).clamp(0, 99);
       } else {
-        _stablePose[i] = raw;
+        _poseCandidate[i] = raw;
         _poseStreak[i] = 1;
       }
-      final HandPose locked =
-          _poseStreak[i] >= required ? _stablePose[i] : HandPose.none;
+      // Only swap the locked pose once the candidate has held long enough; a
+      // single stray frame therefore keeps the current note instead of cutting.
+      if (_poseStreak[i] >= required) {
+        _poseLocked[i] = _poseCandidate[i];
+      }
+      final HandPose locked = _poseLocked[i];
       poses.add(locked);
       held.addAll(_poseToNotes(locked, rootMidi));
 
@@ -316,12 +394,28 @@ class GestureMapper {
 
   // -- Theremin ---------------------------------------------------------------
 
+  /// Lowest/highest theremin pitch: a wide five-octave sweep (C2–C7) so the
+  /// pitch hand reaches deep lows and bright highs without leaving the frame.
+  static const int kThereminMidiLow = 36; // C2
+  static const int kThereminMidiHigh = 96; // C7
+
+  /// Maps a normalized pitch-hand height [py] (0 = top of frame) to a MIDI note
+  /// snapped to [scale]. Higher hand (smaller y) ⇒ higher pitch. Pure + testable.
+  static int thereminMidi(double py, List<int> scale) {
+    final double p = py.clamp(0.0, 1.0);
+    final int rawMidi =
+        (kThereminMidiHigh - p * (kThereminMidiHigh - kThereminMidiLow)).round();
+    return quantizeToScale(rawMidi, scale, rootPitchClass: 0);
+  }
+
   GestureOutput _mapTheremin(HandFrame frame, SynthSettings settings) {
-    // A wide five-octave sweep so the pitch hand can reach deep lows and bright
-    // highs without leaving the frame. (The Synth octave-shift stacks on top.)
-    const int midiLow = 36; // C2
-    const int midiHigh = 96; // C7
-    final List<int> scale = kScales[settings.thereminScale] ?? kScales['Chromatic']!;
+    final List<int> scale =
+        kScales[settings.thereminScale] ?? kScales['Chromatic']!;
+
+    final int nowMicros = DateTime.now().microsecondsSinceEpoch;
+    final double dt =
+        _prevMicros == null ? 0.0 : (nowMicros - _prevMicros!) / 1e6;
+    _prevMicros = nowMicros;
 
     // Sort hands left→right; left hand controls volume, right controls pitch.
     final List<Hand> hands = List<Hand>.of(frame.hands)
@@ -340,18 +434,23 @@ class GestureMapper {
       volume = 0.85; // single-hand play stays audible
     }
 
-    final double py = pitchHand[kIndexTip].y.clamp(0.0, 1.0);
-    // Higher hand (smaller y) => higher pitch.
-    final int rawMidi = (midiHigh - (py * (midiHigh - midiLow))).round();
-    final int midi = quantizeToScale(rawMidi, scale, rootPitchClass: 0);
+    // Smooth the continuous pitch/volume *before* quantizing, so landmark jitter
+    // no longer makes the note flutter between neighbouring scale steps or the
+    // volume buzz. The 1€ filter keeps fast slides responsive.
+    final double rawPy = pitchHand[kIndexTip].y.clamp(0.0, 1.0);
+    final double py = _thereminPitch.filter(rawPy, dt).clamp(0.0, 1.0);
+    final double smoothVol = _thereminVolume.filter(volume, dt).clamp(0.0, 1.0);
+
+    final int midi = thereminMidi(py, scale);
 
     return GestureOutput(
       heldNotes: <Note>{Note(midi)},
-      thereminVolume: volume,
+      thereminVolume: smoothVol,
       pitchHandY: py,
       volumeHandY: volumeHandY,
       cursors: <FingerCursor>[
-        FingerCursor(x: pitchHand[kIndexTip].x, y: py, colorIndex: 1, note: Note(midi)),
+        FingerCursor(
+            x: pitchHand[kIndexTip].x, y: py, colorIndex: 1, note: Note(midi)),
         if (volumeHandY != null)
           FingerCursor(x: hands.first[kWrist].x, y: volumeHandY, colorIndex: 3),
       ],

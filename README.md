@@ -176,6 +176,14 @@ turns those into notes:
 - **Theremin** sorts detected hands left→right: the right hand's height sets the
   pitch (snapped to the selected scale), the left hand's height sets volume.
 
+The raw landmarks jitter frame-to-frame, so the mapper adds a light robustness
+layer: the Air-Piano press line has **hysteresis** and each held lane is
+**sticky** (a fingertip must move clearly past a boundary before the note jumps),
+recognised poses are **held through single-frame mis-reads**, and the Theremin's
+pitch/volume run through a **1€ filter** (`utils/one_euro_filter.dart`) that kills
+jitter without adding lag. The bands are constants at the top of
+`gesture_mapper.dart`, easy to tune per device.
+
 `hand_landmarker` reports landmarks in the raw camera-sensor frame, so the
 overlay maps them into the preview's display space — rotating by the sensor
 mount orientation and mirroring for the front (selfie) camera — in

@@ -12,6 +12,7 @@ import 'package:ar_synth/services/gesture_mapper.dart';
 import 'package:ar_synth/services/update_service.dart';
 import 'package:ar_synth/state/arpeggiator.dart';
 import 'package:ar_synth/utils/finger_geometry.dart';
+import 'package:ar_synth/utils/one_euro_filter.dart';
 import 'package:ar_synth/utils/overlay_transform.dart';
 
 void main() {
@@ -281,22 +282,89 @@ void main() {
   });
 
   group('theremin pitch range', () {
-    final GestureMapper mapper = GestureMapper();
-    const SynthSettings s = SynthSettings(
-        gestureMode: GestureMode.theremin, thereminScale: 'Chromatic');
-    HandFrame frame(double indexTipY) => HandFrame(
-        hands: <Hand>[_thereminHand(indexTipY)], imageWidth: 1, imageHeight: 1);
+    final List<int> chromatic = kScales['Chromatic']!;
 
     test('spans five octaves (C2..C7) across the vertical sweep', () {
       // Hand at the top of the frame plays the highest note, bottom the lowest.
-      expect(mapper.map(frame(0.0), s).heldNotes.first.midi, 96); // C7
-      expect(mapper.map(frame(1.0), s).heldNotes.first.midi, 36); // C2
+      expect(GestureMapper.thereminMidi(0.0, chromatic), 96); // C7
+      expect(GestureMapper.thereminMidi(1.0, chromatic), 36); // C2
     });
 
     test('the sweep is monotonic (higher hand => higher pitch)', () {
-      final int high = mapper.map(frame(0.25), s).heldNotes.first.midi;
-      final int low = mapper.map(frame(0.75), s).heldNotes.first.midi;
-      expect(high, greaterThan(low));
+      expect(GestureMapper.thereminMidi(0.25, chromatic),
+          greaterThan(GestureMapper.thereminMidi(0.75, chromatic)));
+    });
+  });
+
+  group('1€ filter', () {
+    test('passes the first sample through, then remembers it', () {
+      final OneEuroFilter f = OneEuroFilter();
+      expect(f.hasValue, isFalse);
+      expect(f.filter(0.7, 0.066), 0.7);
+      expect(f.hasValue, isTrue);
+      expect(f.value, 0.7);
+    });
+
+    test('a step is smoothed, not jumped, and eventually converges', () {
+      final OneEuroFilter f = OneEuroFilter(minCutoff: 1.0, beta: 0.0);
+      f.filter(0.0, 0.066);
+      final double firstStep = f.filter(1.0, 0.066);
+      expect(firstStep, inInclusiveRange(0.0, 1.0));
+      expect(firstStep, lessThan(1.0)); // doesn't snap instantly
+      double v = firstStep;
+      for (int i = 0; i < 200; i++) {
+        v = f.filter(1.0, 0.066);
+      }
+      expect(v, closeTo(1.0, 1e-3)); // settles on the held value
+    });
+
+    test('reset forgets history; non-positive dt passes through', () {
+      final OneEuroFilter f = OneEuroFilter();
+      f.filter(0.5, 0.066);
+      f.reset();
+      expect(f.hasValue, isFalse);
+      expect(f.filter(0.9, 0.0), 0.9);
+    });
+  });
+
+  group('air-piano press hysteresis + lane stickiness', () {
+    test('press line has a hysteresis band', () {
+      const double line = 0.5;
+      // Not pressing yet: must reach the line.
+      expect(
+          GestureMapper.pressWithHysteresis(
+              wasPressed: false, tipY: 0.49, pressLineY: line),
+          isFalse);
+      expect(
+          GestureMapper.pressWithHysteresis(
+              wasPressed: false, tipY: 0.50, pressLineY: line),
+          isTrue);
+      // Already pressing: stays pressed within the band just above the line...
+      expect(
+          GestureMapper.pressWithHysteresis(
+              wasPressed: true, tipY: 0.47, pressLineY: line),
+          isTrue);
+      // ...and only releases once lifted past the band.
+      expect(
+          GestureMapper.pressWithHysteresis(
+              wasPressed: true, tipY: 0.40, pressLineY: line),
+          isFalse);
+    });
+
+    test('a held lane resists jitter but yields to a clear move', () {
+      // 10 lanes of width 0.1; prevLane 4 spans [0.4,0.5), center 0.45.
+      expect(
+          GestureMapper.stickyLane(
+              tipX: 0.51, laneCount: 10, prevLane: 4, wasPressed: true),
+          4); // small nudge past the boundary stays put
+      expect(
+          GestureMapper.stickyLane(
+              tipX: 0.58, laneCount: 10, prevLane: 4, wasPressed: true),
+          5); // a clear move switches lanes
+      expect(
+          GestureMapper.stickyLane(
+              tipX: 0.51, laneCount: 10, prevLane: 4, wasPressed: false),
+          5); // not held: tracks the raw lane
     });
   });
 
@@ -336,16 +404,6 @@ void main() {
     });
   });
 
-}
-
-/// A minimal valid 21-landmark hand whose index fingertip sits at the given
-/// height, used to drive the theremin pitch mapping (which reads that tip's y).
-Hand _thereminHand(double indexTipY) {
-  final List<HandLandmark> lm =
-      List<HandLandmark>.filled(21, const HandLandmark(0.5, 0.5, 0));
-  lm[kWrist] = const HandLandmark(0.5, 0.6, 0);
-  lm[kIndexTip] = HandLandmark(0.5, indexTipY, 0);
-  return Hand(landmarks: lm);
 }
 
 /// Builds a crude but valid 21-landmark hand pointing up from a wrist at
