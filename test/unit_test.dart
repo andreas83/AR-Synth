@@ -471,6 +471,90 @@ void main() {
       expect(r.faceTarget, FaceTarget.pan);
     });
   });
+
+  group('sound presets & richness', () {
+    test('every SoundPreset has a non-empty label and description', () {
+      for (final SoundPreset p in SoundPreset.values) {
+        expect(p.label.trim(), isNotEmpty, reason: 'label ${p.name}');
+        expect(p.description.trim(), isNotEmpty, reason: 'description ${p.name}');
+      }
+    });
+
+    test('unison + preset survive a JSON round-trip', () {
+      const SynthSettings s = SynthSettings(
+        unison: 0.65,
+        preset: SoundPreset.warmPad,
+      );
+      final SynthSettings r = SynthSettings.fromJson(s.toJson());
+      expect(r.unison, closeTo(0.65, 1e-9));
+      expect(r.preset, SoundPreset.warmPad);
+    });
+
+    test('fromJson defaults unison to 0 and preset to custom when absent', () {
+      // Simulate settings persisted before these fields existed.
+      final Map<String, dynamic> legacy = const SynthSettings().toJson()
+        ..remove('unison')
+        ..remove('preset');
+      final SynthSettings r = SynthSettings.fromJson(legacy);
+      expect(r.unison, 0.0);
+      expect(r.preset, SoundPreset.custom);
+    });
+
+    test('custom preset returns the base settings unchanged', () {
+      const SynthSettings base = SynthSettings(reverb: 0.42, unison: 0.3);
+      expect(applySoundPreset(base, SoundPreset.custom), same(base));
+    });
+
+    test('applySoundPreset sets tone + musical fields and records the preset', () {
+      const SynthSettings base = SynthSettings();
+      final SynthSettings pad = applySoundPreset(base, SoundPreset.warmPad);
+      // Records the selection.
+      expect(pad.preset, SoundPreset.warmPad);
+      // Tone changed toward a lush pad.
+      expect(pad.engine, SoundEngine.synth);
+      expect(pad.unison, greaterThan(0.0));
+      expect(pad.reverb, greaterThan(base.reverb));
+      expect(pad.filterEnabled, isTrue);
+      // Musical context is set (tone + musical scope).
+      expect(kScales.keys, contains(pad.scaleName));
+      expect(pad.keyRoot, inInclusiveRange(0, 11));
+    });
+
+    test('applySoundPreset preserves performance / layout settings', () {
+      const SynthSettings base = SynthSettings(
+        gestureMode: GestureMode.theremin,
+        startOctave: 2,
+        octaves: 3,
+        octaveShift: -2,
+        cameraQuarterTurns: 3,
+        velocityEnabled: false,
+        panEnabled: true,
+        visualizerEnabled: false,
+      );
+      for (final SoundPreset p in SoundPreset.values) {
+        final SynthSettings out = applySoundPreset(base, p);
+        expect(out.gestureMode, base.gestureMode, reason: p.name);
+        expect(out.startOctave, base.startOctave, reason: p.name);
+        expect(out.octaves, base.octaves, reason: p.name);
+        expect(out.octaveShift, base.octaveShift, reason: p.name);
+        expect(out.cameraQuarterTurns, base.cameraQuarterTurns, reason: p.name);
+        expect(out.velocityEnabled, base.velocityEnabled, reason: p.name);
+        expect(out.panEnabled, base.panEnabled, reason: p.name);
+        expect(out.visualizerEnabled, base.visualizerEnabled, reason: p.name);
+      }
+    });
+
+    test('preset arpeggiator/scale values stay within valid ranges', () {
+      for (final SoundPreset p in SoundPreset.values) {
+        final SynthSettings out = applySoundPreset(const SynthSettings(), p);
+        expect(kScales.keys, contains(out.scaleName), reason: p.name);
+        expect(out.keyRoot, inInclusiveRange(0, 11), reason: p.name);
+        expect(out.bpm, inInclusiveRange(20.0, 300.0), reason: p.name);
+        expect(out.arpGate, inInclusiveRange(0.0, 1.0), reason: p.name);
+        expect(out.unison, inInclusiveRange(0.0, 1.0), reason: p.name);
+      }
+    });
+  });
 }
 
 /// Builds a crude but valid 21-landmark hand pointing up from a wrist at

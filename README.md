@@ -28,12 +28,21 @@ gestures into music.
     glissando (and it runs through the arpeggiator when that's on).
   - **Face** — tilt your head to choose the pitch (quantized to your scale) and
     open your mouth to sound it; a hands-free face-theremin.
+- **One-tap sound presets** — pick a whole vibe in a single tap: *Grand Piano,
+  Warm Pad, Neon Lead, Dreamy Bells, Deep Bass, Ambient Wash*. Each preset sets
+  the tone (engine, waveform, richness, envelope, effects, filter) **and** the
+  musical context (scale/key + arpeggiator), while leaving your gesture mode,
+  keyboard range and camera setup untouched. Tweaking any knob drops the picker
+  back to *Custom*.
 - **Two switchable sound engines:**
   - **Synth** — real-time oscillators (sine / square / saw / triangle / bounce /
     jaws) with a full **ADSR** envelope and **reverb / echo / distortion**
     effects (via `flutter_soloud`).
   - **Piano** — pitch-shifted piano **samples** (bundled; see below).
 - **Expressive & creative controls:**
+  - **Richness (unison)** — stack detuned oscillator copies for a wider, lusher
+    synth tone; 0 keeps a single clean oscillator. Dense chords are automatically
+    gain-staged so the mix stays clear instead of clipping.
   - **Velocity from tap speed** — in Air Piano, how fast you jab a finger down
     sets the note's loudness (toggle in *Performance*).
   - **Resonant low-pass filter + LFO** — sweepable cutoff & resonance, with an
@@ -56,16 +65,16 @@ gestures into music.
     reverb, or volume. Runs ML Kit face detection on the *same* camera stream
     as the hand tracker (no second camera), off by default.
 - **Synth controls in-context** — a drag-up **bottom sheet** on the gesture
-  screen exposes engine, waveform, ADSR, effects, filter/LFO, scale, arpeggiator,
-  octave and visuals without leaving the camera; a keyboard strip highlights the
-  notes you're playing.
+  screen exposes presets, engine, waveform, richness, ADSR, effects, filter/LFO,
+  scale, arpeggiator, octave and visuals without leaving the camera; a keyboard
+  strip highlights the notes you're playing.
 - **In-app gesture guide** — an always-on legend on the camera screen spells out
   what the current mode responds to, and an **ⓘ** button (or tapping the legend)
   opens a per-mode sheet detailing every gesture and the note/chord it plays.
-- **Live, persisted settings** — engine, waveform, ADSR, octave shift, effects
-  (reverb / echo / distortion), filter/LFO, velocity, pan & depth modulation,
-  scale + key, arpeggiator, visualizer, gesture mode & sensitivity, keyboard
-  range, theremin scale.
+- **Live, persisted settings** — preset, engine, waveform, richness, ADSR,
+  octave shift, effects (reverb / echo / distortion), filter/LFO, velocity, pan &
+  depth modulation, scale + key, arpeggiator, visualizer, gesture mode &
+  sensitivity, keyboard range, theremin scale.
 
 ## Tech stack
 

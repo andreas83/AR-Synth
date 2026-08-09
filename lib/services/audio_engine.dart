@@ -66,10 +66,29 @@ class AudioEngine {
   double? _liveCutoffNorm;
 
   /// Dart-driven LFO that sweeps the filter cutoff (used instead of a native
-  /// oscillator so it stays version-independent).
+  /// oscillator so it stays version-independent). The step is deliberately fine
+  /// (~120 Hz) so cutoff sweeps sound smooth rather than stepped/"zippered".
   Timer? _lfoTimer;
   double _lfoPhase = 0.0;
-  static const Duration _lfoStep = Duration(milliseconds: 30);
+  static const Duration _lfoStep = Duration(milliseconds: 8);
+
+  /// Live (non-persisted) master volume from the theremin volume hand. When set
+  /// it overrides [SynthSettings.masterVolume] until cleared.
+  double? _liveMaster;
+
+  /// Current polyphony gain compensation (see [_pushGlobalVolume]). 1.0 for a
+  /// single voice; falls off gently as more voices sound so dense chords keep
+  /// headroom instead of summing into hard clipping.
+  double _polyComp = 1.0;
+
+  /// How quickly polyphony gain compensation reduces per added voice. Higher =
+  /// more aggressive attenuation on big chords. Tuned to stay full-bodied for a
+  /// couple of notes and only pull back on dense stacks.
+  static const double _polyCompK = 0.22;
+
+  /// How far unison detunes the stacked super-wave copies (SoLoud detune arg) at
+  /// full richness. A musically pleasant spread rather than a wide chorus.
+  static const double _unisonSpread = 0.6;
 
   bool get hasSamples => _sampleSources.isNotEmpty;
 
@@ -78,7 +97,7 @@ class AudioEngine {
     try {
       await _soloud.init();
       _initialized = true;
-      _soloud.setGlobalVolume(_settings.masterVolume);
+      _pushGlobalVolume();
       await _loadSamples();
       _applyEffects();
       _applyFilter();
@@ -96,7 +115,9 @@ class AudioEngine {
     if (!_initialized) return;
 
     if (settings.masterVolume != previous.masterVolume) {
-      _soloud.setGlobalVolume(settings.masterVolume);
+      // A deliberate master-slider (or preset) change re-asserts the base level.
+      _liveMaster = null;
+      _pushGlobalVolume();
     }
     if (settings.wave != previous.wave) {
       final WaveForm wf = _mapWave(settings.wave);
@@ -105,6 +126,12 @@ class AudioEngine {
           _soloud.setWaveform(src, wf);
         } catch (_) {}
       }
+    }
+    // Unison (super-wave) is baked in at load time, so cached oscillator sources
+    // must be rebuilt. Drop those not held by a live voice; leave sounding ones
+    // so held notes don't cut out. New notes lazily recreate with the new detune.
+    if (settings.unison != previous.unison) {
+      await _rebuildIdleSynthSources();
     }
     if (settings.reverb != previous.reverb ||
         settings.echo != previous.echo ||
@@ -125,9 +152,8 @@ class AudioEngine {
   /// for continuous volume control). Does not modify the stored settings.
   Future<void> setLiveMasterVolume(double v) async {
     if (!_initialized) return;
-    try {
-      _soloud.setGlobalVolume(v.clamp(0.0, 1.0));
-    } catch (_) {}
+    _liveMaster = v.clamp(0.0, 1.0);
+    _pushGlobalVolume();
   }
 
   /// Live-sets the low-pass cutoff from a normalized 0..1 control (used by the
@@ -234,6 +260,8 @@ class AudioEngine {
 
     final _Voice voice = _Voice(handle, peak);
     _voices[midi] = voice;
+    // Keep summed output within headroom as polyphony grows.
+    _recomputePolyComp();
 
     // A note started mid-pan must inherit the current pan, not play centered.
     if (_panActive) {
@@ -265,6 +293,8 @@ class AudioEngine {
     if (voice == null) return;
     voice.released = true;
     voice.decayTimer?.cancel();
+    // Redistribute headroom now that a voice has been released.
+    _recomputePolyComp();
 
     final Duration release = _secs(_settings.adsr.release);
     try {
@@ -296,6 +326,25 @@ class AudioEngine {
 
   // -- Internals --------------------------------------------------------------
 
+  /// Writes the effective global volume: the live (theremin) master when set,
+  /// else the persisted master, scaled by the current polyphony compensation.
+  void _pushGlobalVolume() {
+    if (!_initialized) return;
+    final double base = (_liveMaster ?? _settings.masterVolume).clamp(0.0, 1.0);
+    try {
+      _soloud.setGlobalVolume((base * _polyComp).clamp(0.0, 1.0));
+    } catch (_) {}
+  }
+
+  /// Recomputes polyphony gain compensation from the active voice count and
+  /// re-pushes the global volume. Single notes stay at full level; dense chords
+  /// are pulled back gently so their summed output keeps headroom.
+  void _recomputePolyComp() {
+    final int n = _voices.length;
+    _polyComp = n <= 1 ? 1.0 : 1.0 / (1.0 + _polyCompK * (n - 1));
+    _pushGlobalVolume();
+  }
+
   Future<SoundHandle> _playSynth(int midi) async {
     final AudioSource src = await _synthSourceFor(midi);
     return _soloud.play(src, volume: 0.0);
@@ -304,11 +353,33 @@ class AudioEngine {
   Future<AudioSource> _synthSourceFor(int midi) async {
     final AudioSource? existing = _synthSources[midi];
     if (existing != null) return existing;
-    final AudioSource src =
-        await _soloud.loadWaveform(_mapWave(_settings.wave), false, 1.0, 1.0);
+    // Unison > 0 enables SoLoud's detuned super-wave for a wider, lusher tone;
+    // 0 keeps a single oscillator (identical to the original sound).
+    final double unison = _settings.unison.clamp(0.0, 1.0);
+    final bool superWave = unison > 0.001;
+    final double detune = 1.0 + unison * _unisonSpread;
+    final AudioSource src = await _soloud.loadWaveform(
+        _mapWave(_settings.wave), superWave, 1.0, detune);
     _soloud.setWaveformFreq(src, Note(midi).frequency);
     _synthSources[midi] = src;
     return src;
+  }
+
+  /// Disposes cached oscillator sources that no live voice is currently using,
+  /// so the next note for that pitch is rebuilt with the current unison setting.
+  /// Sources backing a sounding voice are kept so held notes are not cut off.
+  Future<void> _rebuildIdleSynthSources() async {
+    final Set<int> heldMidis = _voices.keys.toSet();
+    final List<int> idle = _synthSources.keys
+        .where((int midi) => !heldMidis.contains(midi))
+        .toList(growable: false);
+    for (final int midi in idle) {
+      final AudioSource? src = _synthSources.remove(midi);
+      if (src == null) continue;
+      try {
+        await _soloud.disposeSource(src);
+      } catch (_) {}
+    }
   }
 
   Future<SoundHandle?> _playSample(int midi) async {
@@ -341,6 +412,7 @@ class AudioEngine {
     final _Voice? voice = _voices.remove(midi);
     if (voice == null) return;
     voice.decayTimer?.cancel();
+    _recomputePolyComp();
     await _hardStopHandle(voice.handle);
   }
 

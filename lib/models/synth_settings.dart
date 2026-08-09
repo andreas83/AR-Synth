@@ -162,6 +162,47 @@ extension SynthWaveLabel on SynthWave {
       };
 }
 
+/// A one-tap "sound design" preset: a curated bundle of tone + musical settings
+/// (see [applySoundPreset]). [custom] means the user has hand-tuned the sound and
+/// no preset is currently selected.
+enum SoundPreset {
+  custom,
+  grandPiano,
+  warmPad,
+  neonLead,
+  dreamyBells,
+  deepBass,
+  ambientWash,
+}
+
+extension SoundPresetLabel on SoundPreset {
+  String get label => switch (this) {
+        SoundPreset.custom => 'Custom',
+        SoundPreset.grandPiano => 'Grand Piano',
+        SoundPreset.warmPad => 'Warm Pad',
+        SoundPreset.neonLead => 'Neon Lead',
+        SoundPreset.dreamyBells => 'Dreamy Bells',
+        SoundPreset.deepBass => 'Deep Bass',
+        SoundPreset.ambientWash => 'Ambient Wash',
+      };
+
+  String get description => switch (this) {
+        SoundPreset.custom => 'Your own hand-tuned sound.',
+        SoundPreset.grandPiano =>
+          'Sampled acoustic piano with a touch of room reverb.',
+        SoundPreset.warmPad =>
+          'Lush detuned pad — slow swell, gentle filter movement.',
+        SoundPreset.neonLead =>
+          'Bright, driven saw lead with a little delay and grit.',
+        SoundPreset.dreamyBells =>
+          'Sparkling bells with long tails and a fast arpeggio.',
+        SoundPreset.deepBass =>
+          'Round, focused bass with a low filter and light drive.',
+        SoundPreset.ambientWash =>
+          'Vast evolving texture — maximum width, reverb and slow arp.',
+      };
+}
+
 /// A simple attack/decay/sustain/release amplitude envelope (seconds + level).
 class Adsr {
   const Adsr({
@@ -265,6 +306,8 @@ class SynthSettings {
     this.panEnabled = false,
     this.depthModEnabled = false,
     this.depthTarget = DepthTarget.cutoff,
+    this.unison = 0.0,
+    this.preset = SoundPreset.custom,
   });
 
   final SoundEngine engine;
@@ -352,6 +395,15 @@ class SynthSettings {
   final bool depthModEnabled;
   final DepthTarget depthTarget;
 
+  /// Unison "richness": 0 = a single oscillator (original tone), rising toward 1
+  /// stacks detuned copies (SoLoud super-wave) for a wider, lusher sound. Only
+  /// affects [SoundEngine.synth].
+  final double unison;
+
+  /// The currently selected [SoundPreset], or [SoundPreset.custom] once the user
+  /// tweaks any sound parameter by hand.
+  final SoundPreset preset;
+
   SynthSettings copyWith({
     SoundEngine? engine,
     SynthWave? wave,
@@ -389,6 +441,8 @@ class SynthSettings {
     bool? panEnabled,
     bool? depthModEnabled,
     DepthTarget? depthTarget,
+    double? unison,
+    SoundPreset? preset,
   }) {
     return SynthSettings(
       engine: engine ?? this.engine,
@@ -427,6 +481,8 @@ class SynthSettings {
       panEnabled: panEnabled ?? this.panEnabled,
       depthModEnabled: depthModEnabled ?? this.depthModEnabled,
       depthTarget: depthTarget ?? this.depthTarget,
+      unison: unison ?? this.unison,
+      preset: preset ?? this.preset,
     );
   }
 
@@ -470,6 +526,8 @@ class SynthSettings {
         'panEnabled': panEnabled,
         'depthModEnabled': depthModEnabled,
         'depthTarget': depthTarget.name,
+        'unison': unison,
+        'preset': preset.name,
       };
 
   factory SynthSettings.fromJson(Map<String, dynamic> json) {
@@ -532,6 +590,135 @@ class SynthSettings {
       depthModEnabled: json['depthModEnabled'] as bool? ?? false,
       depthTarget: pick(DepthTarget.cutoff,
           () => DepthTarget.values.byName(json['depthTarget'] as String)),
+      unison: (json['unison'] as num?)?.toDouble() ?? 0.0,
+      preset: pick(SoundPreset.custom,
+          () => SoundPreset.values.byName(json['preset'] as String)),
     );
   }
+}
+
+/// Returns [base] with only the **tone + musical** fields overridden to match
+/// [preset]: engine, wave, envelope, richness, effects, filter/LFO, plus the
+/// scale/key and arpeggiator. Performance and layout settings — gesture mode,
+/// keyboard range, octave shift, camera rotation, velocity, face/pan/pinch/depth
+/// modulation and the visualizer — are deliberately preserved from [base] so a
+/// preset never disrupts how the player is set up to perform. [SoundPreset.custom]
+/// returns [base] unchanged.
+SynthSettings applySoundPreset(SynthSettings base, SoundPreset preset) {
+  return switch (preset) {
+    SoundPreset.custom => base,
+    SoundPreset.grandPiano => base.copyWith(
+        preset: preset,
+        engine: SoundEngine.sample,
+        adsr: const Adsr(attack: 0.005, decay: 0.6, sustain: 0.35, release: 0.5),
+        unison: 0.0,
+        reverb: 0.22,
+        echo: 0.0,
+        distortion: 0.0,
+        filterEnabled: false,
+        lfoEnabled: false,
+        lfoDepth: 0.0,
+        scaleName: 'Major',
+        keyRoot: 0,
+        arpEnabled: false,
+      ),
+    SoundPreset.warmPad => base.copyWith(
+        preset: preset,
+        engine: SoundEngine.synth,
+        wave: SynthWave.saw,
+        adsr: const Adsr(attack: 0.6, decay: 0.4, sustain: 0.85, release: 0.9),
+        unison: 0.7,
+        reverb: 0.55,
+        echo: 0.1,
+        distortion: 0.0,
+        filterEnabled: true,
+        filterCutoff: 0.55,
+        filterResonance: 0.15,
+        lfoEnabled: true,
+        lfoRateHz: 0.3,
+        lfoDepth: 0.25,
+        scaleName: 'Major',
+        keyRoot: 0,
+        arpEnabled: false,
+      ),
+    SoundPreset.neonLead => base.copyWith(
+        preset: preset,
+        engine: SoundEngine.synth,
+        wave: SynthWave.saw,
+        adsr: const Adsr(attack: 0.005, decay: 0.15, sustain: 0.75, release: 0.2),
+        unison: 0.35,
+        reverb: 0.2,
+        echo: 0.25,
+        distortion: 0.2,
+        filterEnabled: true,
+        filterCutoff: 0.8,
+        filterResonance: 0.35,
+        lfoEnabled: false,
+        lfoDepth: 0.0,
+        scaleName: 'Minor',
+        keyRoot: 9,
+        arpEnabled: false,
+      ),
+    SoundPreset.dreamyBells => base.copyWith(
+        preset: preset,
+        engine: SoundEngine.synth,
+        wave: SynthWave.triangle,
+        adsr: const Adsr(attack: 0.003, decay: 0.9, sustain: 0.15, release: 1.0),
+        unison: 0.2,
+        reverb: 0.6,
+        echo: 0.35,
+        distortion: 0.0,
+        filterEnabled: false,
+        lfoEnabled: false,
+        lfoDepth: 0.0,
+        scaleName: 'Pentatonic',
+        keyRoot: 0,
+        arpEnabled: true,
+        arpPattern: ArpPattern.up,
+        arpRate: ArpRate.sixteenth,
+        bpm: 120.0,
+        arpGate: 0.5,
+      ),
+    SoundPreset.deepBass => base.copyWith(
+        preset: preset,
+        engine: SoundEngine.synth,
+        wave: SynthWave.saw,
+        adsr: const Adsr(attack: 0.005, decay: 0.2, sustain: 0.8, release: 0.15),
+        unison: 0.15,
+        reverb: 0.05,
+        echo: 0.0,
+        distortion: 0.15,
+        filterEnabled: true,
+        filterCutoff: 0.35,
+        filterResonance: 0.2,
+        lfoEnabled: false,
+        lfoDepth: 0.0,
+        scaleName: 'Minor',
+        keyRoot: 0,
+        arpEnabled: false,
+      ),
+    SoundPreset.ambientWash => base.copyWith(
+        preset: preset,
+        engine: SoundEngine.synth,
+        wave: SynthWave.triangle,
+        adsr: const Adsr(attack: 1.2, decay: 0.8, sustain: 0.9, release: 1.5),
+        unison: 0.9,
+        reverb: 0.75,
+        echo: 0.4,
+        distortion: 0.0,
+        filterEnabled: true,
+        filterCutoff: 0.5,
+        filterResonance: 0.1,
+        lfoEnabled: true,
+        lfoRateHz: 0.15,
+        lfoDepth: 0.4,
+        scaleName: 'Pentatonic',
+        keyRoot: 0,
+        arpEnabled: true,
+        arpPattern: ArpPattern.updown,
+        arpRate: ArpRate.quarter,
+        bpm: 90.0,
+        arpGate: 0.9,
+      ),
+  };
 }
