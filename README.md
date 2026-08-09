@@ -15,7 +15,7 @@ gestures into music.
 
 ## Features
 
-- **Camera gesture instrument** with four selectable modes:
+- **Camera gesture instrument** with five selectable modes:
   - **Air Piano** — fingertips hover over the keyboard; push a finger down past
     the on-screen "press line" to play the key beneath it.
   - **Hand Poses** — hold a recognised pose (fist, point, peace, open hand,
@@ -23,11 +23,15 @@ gestures into music.
   - **Theremin** — one hand's height sweeps pitch across a wide five-octave
     range (C2–C7, quantized to a scale of your choice), the other hand's height
     controls volume.
+  - **Strum / Harp** — sweep a fingertip across the scale lanes to pluck notes;
+    moving between lanes releases the old note and sounds the next, like a harp
+    glissando (and it runs through the arpeggiator when that's on).
   - **Face** — tilt your head to choose the pitch (quantized to your scale) and
     open your mouth to sound it; a hands-free face-theremin.
 - **Two switchable sound engines:**
-  - **Synth** — real-time oscillators (sine / square / saw / triangle) with a
-    full **ADSR** envelope and **reverb / echo** effects (via `flutter_soloud`).
+  - **Synth** — real-time oscillators (sine / square / saw / triangle / bounce /
+    jaws) with a full **ADSR** envelope and **reverb / echo / distortion**
+    effects (via `flutter_soloud`).
   - **Piano** — pitch-shifted piano **samples** (bundled; see below).
 - **Expressive & creative controls:**
   - **Velocity from tap speed** — in Air Piano, how fast you jab a finger down
@@ -36,6 +40,11 @@ gestures into music.
     optional LFO that auto-sweeps the cutoff.
   - **Pinch → cutoff** — your *free* hand's pinch distance modulates the filter
     live (a hands-in-the-air "wah").
+  - **Pan by hand position** — a playing hand's horizontal position sweeps the
+    stereo image left↔right (also assignable to a face signal).
+  - **Push / pull depth** — moving a hand toward or away from the camera
+    modulates the filter cutoff or the volume live (the hand's size stands in
+    for depth), yielding to pinch / theremin on shared targets.
   - **Scale lock** — Air-Piano lanes snap to any scale + key so you're always in
     tune (the default, C Major, matches the classic white-key layout).
   - **Arpeggiator** — held chords/poses spread into a rhythmic sequence
@@ -53,9 +62,10 @@ gestures into music.
 - **In-app gesture guide** — an always-on legend on the camera screen spells out
   what the current mode responds to, and an **ⓘ** button (or tapping the legend)
   opens a per-mode sheet detailing every gesture and the note/chord it plays.
-- **Live, persisted settings** — engine, waveform, ADSR, octave shift, effects,
-  filter/LFO, velocity, scale + key, arpeggiator, visualizer, gesture mode &
-  sensitivity, keyboard range, theremin scale.
+- **Live, persisted settings** — engine, waveform, ADSR, octave shift, effects
+  (reverb / echo / distortion), filter/LFO, velocity, pan & depth modulation,
+  scale + key, arpeggiator, visualizer, gesture mode & sensitivity, keyboard
+  range, theremin scale.
 
 ## Tech stack
 
@@ -175,6 +185,9 @@ turns those into notes:
   de-bounce so poses don't flicker.
 - **Theremin** sorts detected hands left→right: the right hand's height sets the
   pitch (snapped to the selected scale), the left hand's height sets volume.
+- **Strum / Harp** reuses the Air-Piano lanes: the right-most hand's index
+  fingertip x picks a lane (smoothed + sticky), holding that note while the
+  finger stays and re-plucking as it sweeps to the next lane.
 
 The raw landmarks jitter frame-to-frame, so the mapper adds a light robustness
 layer: the Air-Piano press line has **hysteresis** and each held lane is

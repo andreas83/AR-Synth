@@ -67,11 +67,15 @@ constructor injection here over service locators or globals.
     (`HandFrame`, `FaceFrame`) that decouple the app from plugin types.
 - **`services/`** — side-effecting engines and I/O.
   - `audio_engine.dart` — wraps `flutter_soloud`. Polyphonic voice manager with
-    ADSR envelope, reverb/echo, a resonant low-pass biquad, and a Dart-driven
-    LFO. Renders notes as either oscillators (`SoundEngine.synth`) or
-    pitch-shifted samples (`SoundEngine.sample`). **Degrades gracefully** — if
-    SoLoud fails to init, or no samples are bundled, calls become no-ops /
-    fall back to synth instead of throwing.
+    ADSR envelope, reverb/echo, a wave-shaper **distortion**, a resonant
+    low-pass biquad, and a Dart-driven LFO. Renders notes as either oscillators
+    (`SoundEngine.synth`, sine/square/saw/triangle/bounce/jaws) or pitch-shifted
+    samples (`SoundEngine.sample`). Live-modulation hooks (`setLive*`) cover
+    master volume, filter cutoff, reverb wet, and **stereo pan** — pan is
+    *per-voice* in SoLoud, so `setLivePan` fans out to every active voice and
+    `noteOn` re-applies it to new voices. **Degrades gracefully** — if SoLoud
+    fails to init, or no samples are bundled, calls become no-ops / fall back to
+    synth instead of throwing (every filter access is try/caught).
   - `hand_tracking_service.dart` — owns the `CameraController` + MediaPipe
     `HandLandmarkerPlugin`, throttles synchronous `detect()` to ~15 fps
     (`minFrameInterval`), guards re-entrancy, and publishes normalized
@@ -80,18 +84,24 @@ constructor injection here over service locators or globals.
   - `face_tracker.dart` — ML Kit face detection on the shared camera stream.
   - `gesture_mapper.dart` — the heart of the app: turns a `HandFrame` into a
     `GestureOutput` (held notes, velocities, cursors, modulation), one strategy
-    per `GestureMode`. Holds per-mode state, so it must be **reused across
-    frames and `reset()` when the mode changes**. Robustness tuning constants
-    (press-line hysteresis, sticky lanes, pose de-bounce) live at the top.
+    per `GestureMode` (`airPiano`, `discretePoses`, `theremin`, `strum`, plus
+    face which is driven off the face stream). `GestureOutput` also carries the
+    continuous live-modulation signals: `pinchModulation`, `pan` (from hand-x),
+    and `depthModulation` (from `handScale`, a stable proxy for distance to
+    camera). Holds per-mode state, so it must be **reused across frames and
+    `reset()` when the mode changes**. Robustness tuning constants (press-line
+    hysteresis, sticky lanes, pose de-bounce, depth near/far bounds) live at the
+    top.
   - `update_service.dart` — polls the GitHub Releases API for the in-app
     self-updater.
 - **`state/`** — `ChangeNotifier` controllers bridging UI and services.
   - `piano_controller.dart` — **central note router**. Both touch and gesture
     input funnel through here; it diffs held-note sets into note-on/note-off,
-    routes live modulation (theremin volume, pinch→cutoff, face), and exposes
-    `activeNotes` for UI highlighting. Precedence rule: hand-driven live
-    controls beat the face for shared targets (pinch > face on cutoff;
-    theremin > face on volume).
+    routes live modulation (theremin volume, pinch→cutoff, hand pan, push/pull
+    depth, face), and exposes `activeNotes` for UI highlighting. Each live
+    source sets an `_xAdjusted` flag and restores its target in `clearGesture`.
+    Precedence for shared targets: pinch > depth > face on cutoff; theremin >
+    depth > face on volume; hand-x pan > face on pan.
   - `settings_controller.dart` — holds `SynthSettings`, persists to
     `shared_preferences`, and pushes every change to the `AudioEngine` so edits
     take effect live. All mutations go through the private `_update`.
