@@ -26,6 +26,28 @@ class SynthControls extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
+          _label('Preset'),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            children: <Widget>[
+              for (final SoundPreset p in SoundPreset.values)
+                if (p != SoundPreset.custom)
+                  ChoiceChip(
+                    label: Text(p.label),
+                    selected: s.preset == p,
+                    onSelected: (_) => c.applyPreset(p),
+                  ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            s.preset == SoundPreset.custom
+                ? 'Custom — tap a preset for an instant sound, then tweak.'
+                : s.preset.description,
+            style: const TextStyle(fontSize: 11, color: Colors.white54),
+          ),
+          const Divider(height: 32),
           if (showEngineToggle) ...<Widget>[
             _label('Sound engine'),
             SegmentedButton<SoundEngine>(
@@ -68,6 +90,8 @@ class SynthControls extends StatelessWidget {
                   ),
               ],
             ),
+            const SizedBox(height: 8),
+            _slider('Richness', s.unison, c.setUnison),
             const SizedBox(height: 16),
           ],
           _label('Octave shift: ${s.octaveShift > 0 ? '+' : ''}${s.octaveShift}'),
