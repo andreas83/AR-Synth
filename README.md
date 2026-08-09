@@ -207,19 +207,31 @@ intentionally simple and easy to tune in `gesture_mapper.dart`.
 
 ## App icon
 
-The launcher icon is a clean, minimal **sound wave** on a vibrant
-cyan→violet→magenta gradient (the app's `primary`/`secondary` palette). It ships
-as an Android **adaptive icon** (separate background / foreground / monochrome
-layers, so Android 8+ masks it to any shape and Android 13+ can theme it) with
-legacy square PNGs as a fallback.
+The launcher icon is a clean, minimal **sound wave** on a vibrant diagonal
+gradient. It ships as an Android **adaptive icon** (separate background /
+foreground / monochrome layers, so Android 8+ masks it to any shape and
+Android 13+ can theme it) with legacy square PNGs as a fallback.
+
+The gradient comes in a few ready-made colourways, defined once in the
+`PALETTES` table in `scripts/icon/generate_icons.py`:
+
+| Palette     | Gradient                              |
+| ----------- | ------------------------------------- |
+| `ember`     | orange-red → magenta → purple *(default, shipped)* |
+| `sunset`    | amber → rose → violet                 |
+| `aurora`    | mint → cyan → indigo                  |
+| `synthwave` | cyan → violet → magenta *(original)*  |
 
 Everything is generated from vector sources in [`scripts/icon/`](scripts/icon/)
 (`ar_synth_icon.svg` is the master; `ar_synth_bg/fg/mono.svg` are the adaptive
-layers). To tweak the art, edit the SVGs and regenerate every density:
+layers — the waveform stays white, only the gradient recolours). To tweak the
+art or switch colourways, edit the SVGs / `PALETTES` and regenerate every
+density:
 
 ```bash
 pip install cairosvg pillow
-python3 scripts/icon/generate_icons.py
+python3 scripts/icon/generate_icons.py                 # active (ember) palette
+python3 scripts/icon/generate_icons.py --palette aurora  # try another option
 ```
 
 ## Testing & quality
