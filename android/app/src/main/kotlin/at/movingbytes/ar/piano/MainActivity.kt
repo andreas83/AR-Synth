@@ -1,4 +1,4 @@
-package com.example.ar_synth
+package at.movingbytes.ar.piano
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -186,7 +186,7 @@ versioned `1.0.<run_number>`.
   signature and can install over the previous one. It is a convenience key for
   a personal side-project — **do not treat it as a secret**, and if you ever
   productionize, move to a private keystore in GitHub Secrets.
-- **Android:** `applicationId com.example.ar_synth`, `minSdk` ≥ 24 (MediaPipe
+- **Android:** `applicationId at.movingbytes.ar.piano`, `minSdk` ≥ 24 (MediaPipe
   requirement). Permissions: `CAMERA`, `INTERNET`, `REQUEST_INSTALL_PACKAGES`
   (the last one powers the self-updater).
 
