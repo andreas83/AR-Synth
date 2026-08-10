@@ -55,6 +55,12 @@ class SettingsController extends ChangeNotifier {
   void applyPreset(SoundPreset preset) =>
       _update(applySoundPreset(_settings, preset));
 
+  /// Restores every setting to its factory default. A safety net for when the
+  /// sound/gesture config has been changed by accident (e.g. a live-volume
+  /// modulation left the output near-silent) and the quickest fix is a clean
+  /// slate. Persists and pushes to the audio engine like any other change.
+  void resetToDefaults() => _update(const SynthSettings());
+
   // Convenience mutators -------------------------------------------------------
 
   void setEngine(SoundEngine engine) =>

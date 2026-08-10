@@ -110,6 +110,8 @@ class SettingsScreen extends StatelessWidget {
           // Reuse the shared synth panel for engine/waveform/adsr/effects.
           const SynthControls(),
           const Divider(height: 8),
+          _ResetSection(controller: c),
+          const Divider(height: 8),
           const _AboutSection(),
           const SizedBox(height: 24),
         ],
@@ -190,6 +192,65 @@ class _AboutSectionState extends State<_AboutSection> {
                 )
               : const Icon(Icons.system_update),
           onTap: _checking ? null : _check,
+        ),
+      ],
+    );
+  }
+}
+
+/// "Reset to defaults" action: a single tap (behind a confirm dialog) restores
+/// every gesture/sound setting to its factory value. Handy when an accidental
+/// tweak — e.g. a volume-affecting modulation — has left the instrument
+/// misbehaving and the fastest recovery is a clean slate.
+class _ResetSection extends StatelessWidget {
+  const _ResetSection({required this.controller});
+
+  final SettingsController controller;
+
+  Future<void> _confirmAndReset(BuildContext context) async {
+    final bool ok = await showDialog<bool>(
+          context: context,
+          builder: (BuildContext ctx) => AlertDialog(
+            title: const Text('Reset all settings?'),
+            content: const Text(
+              'This restores every gesture and sound setting to its default. '
+              'Your current configuration will be lost.',
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Reset'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!ok || !context.mounted) return;
+    controller.resetToDefaults();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Settings reset to defaults.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: SectionHeader('Reset'),
+        ),
+        ListTile(
+          title: const Text('Reset to defaults'),
+          subtitle: const Text(
+              'Restore all gesture and sound settings to factory defaults.'),
+          trailing: const Icon(Icons.restart_alt),
+          onTap: () => _confirmAndReset(context),
         ),
       ],
     );

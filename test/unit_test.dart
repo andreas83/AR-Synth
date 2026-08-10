@@ -11,6 +11,7 @@ import 'package:ar_synth/services/face_tracker.dart';
 import 'package:ar_synth/services/gesture_mapper.dart';
 import 'package:ar_synth/services/update_service.dart';
 import 'package:ar_synth/state/arpeggiator.dart';
+import 'package:ar_synth/state/settings_controller.dart';
 import 'package:ar_synth/utils/finger_geometry.dart';
 import 'package:ar_synth/utils/one_euro_filter.dart';
 import 'package:ar_synth/utils/overlay_transform.dart';
@@ -553,6 +554,37 @@ void main() {
         expect(out.arpGate, inInclusiveRange(0.0, 1.0), reason: p.name);
         expect(out.unison, inInclusiveRange(0.0, 1.0), reason: p.name);
       }
+    });
+  });
+
+  group('settings reset', () {
+    setUp(TestWidgetsFlutterBinding.ensureInitialized);
+
+    test('resetToDefaults restores every field to the factory default', () {
+      // The audio engine is uninitialised here, so applySettings is a no-op and
+      // prefs are null — resetToDefaults still updates the in-memory settings.
+      final SettingsController c = SettingsController(AudioEngine());
+      // Mutate a spread of fields away from their defaults.
+      c.setGestureMode(GestureMode.theremin);
+      c.setMasterVolume(0.1);
+      c.setDepthModEnabled(true);
+      c.setDepthTarget(DepthTarget.volume);
+      c.setStartOctave(2);
+      expect(c.settings, isNot(equals(const SynthSettings())));
+
+      c.resetToDefaults();
+
+      // toJson gives a field-by-field snapshot to compare against the default.
+      expect(c.settings.toJson(), const SynthSettings().toJson());
+    });
+
+    test('resetToDefaults notifies listeners', () {
+      final SettingsController c = SettingsController(AudioEngine());
+      c.setMasterVolume(0.1);
+      int notifications = 0;
+      c.addListener(() => notifications++);
+      c.resetToDefaults();
+      expect(notifications, greaterThan(0));
     });
   });
 }
