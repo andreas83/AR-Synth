@@ -8,15 +8,23 @@ import 'package:flutter_soloud/flutter_soloud.dart';
 import '../models/music.dart';
 import '../models/synth_settings.dart';
 
-/// A currently sounding note.
+/// A currently sounding note. [handle] is null only briefly, while the audio
+/// source for the note is still loading; [AudioEngine.noteOn] fills it in once
+/// the source resolves (or stops it if the voice was released meanwhile).
 class _Voice {
-  _Voice(this.handle, this.peak);
+  _Voice(this.peak);
 
-  final SoundHandle handle;
+  /// The SoLoud voice handle, or null while the source is still loading.
+  SoundHandle? handle;
+
+  /// Attack-target amplitude (0..1), derived from note velocity.
   final double peak;
 
   /// Cancels the scheduled decay stage if the note is released early.
   Timer? decayTimer;
+
+  /// Set once the note is released or retired; guards late async work (the
+  /// decay timer, and the still-loading source in [AudioEngine.noteOn]).
   bool released = false;
 }
 
@@ -75,16 +83,6 @@ class AudioEngine {
   /// Live (non-persisted) master volume from the theremin volume hand. When set
   /// it overrides [SynthSettings.masterVolume] until cleared.
   double? _liveMaster;
-
-  /// Current polyphony gain compensation (see [_pushGlobalVolume]). 1.0 for a
-  /// single voice; falls off gently as more voices sound so dense chords keep
-  /// headroom instead of summing into hard clipping.
-  double _polyComp = 1.0;
-
-  /// How quickly polyphony gain compensation reduces per added voice. Higher =
-  /// more aggressive attenuation on big chords. Tuned to stay full-bodied for a
-  /// couple of notes and only pull back on dense stacks.
-  static const double _polyCompK = 0.22;
 
   /// How far unison detunes the stacked super-wave copies (SoLoud detune arg) at
   /// full richness. A musically pleasant spread rather than a wide chorus.
@@ -207,8 +205,10 @@ class AudioEngine {
     _panActive = true;
     if (!_initialized) return;
     for (final _Voice v in _voices.values) {
+      final SoundHandle? h = v.handle;
+      if (h == null) continue; // still loading; noteOn applies the pan on arrival
       try {
-        _soloud.setPan(v.handle, _pan);
+        _soloud.setPan(h, _pan);
       } catch (_) {}
     }
   }
@@ -220,8 +220,10 @@ class AudioEngine {
     _pan = 0.0;
     if (!_initialized) return;
     for (final _Voice v in _voices.values) {
+      final SoundHandle? h = v.handle;
+      if (h == null) continue;
       try {
-        _soloud.setPan(v.handle, 0.0);
+        _soloud.setPan(h, 0.0);
       } catch (_) {}
     }
   }
@@ -235,33 +237,45 @@ class AudioEngine {
     final int midi = _effectiveMidi(note);
     if (midi < 0 || midi > 127) return;
 
-    // Retrigger: stop any existing voice for this note first.
-    if (_voices.containsKey(midi)) {
-      await _hardStop(midi);
-    }
+    // Retrigger: retire any existing (or still-loading) voice for this note.
+    final _Voice? prev = _voices.remove(midi);
+    if (prev != null) _retire(prev);
 
     final Adsr env = _settings.adsr;
     final double peak = (0.9 * velocity).clamp(0.0, 1.0);
     final bool useSamples =
         _settings.engine == SoundEngine.sample && hasSamples;
 
+    // Reserve the voice slot *synchronously*, before awaiting the source load.
+    // A note-off that lands while the source is loading then finds this voice
+    // and marks it released, so the resolved handle is stopped below instead of
+    // leaking a stuck, untracked oscillator (which would silently pile up and
+    // degrade the output over time).
+    final _Voice voice = _Voice(peak);
+    _voices[midi] = voice;
+
     SoundHandle? handle;
     try {
-      if (useSamples) {
-        handle = await _playSample(midi);
-      } else {
-        handle = await _playSynth(midi);
-      }
+      handle = useSamples ? await _playSample(midi) : await _playSynth(midi);
     } catch (e) {
       debugPrint('AudioEngine.noteOn failed for $note: $e');
+    }
+
+    // If the source failed to load, drop the placeholder (unless a newer voice
+    // already took the slot).
+    if (handle == null) {
+      if (identical(_voices[midi], voice)) _voices.remove(midi);
       return;
     }
-    if (handle == null) return;
-
-    final _Voice voice = _Voice(handle, peak);
-    _voices[midi] = voice;
-    // Keep summed output within headroom as polyphony grows.
-    _recomputePolyComp();
+    // If this voice was released or replaced while loading, don't install it —
+    // stop the orphan handle instead.
+    if (voice.released || !identical(_voices[midi], voice)) {
+      try {
+        await _soloud.stop(handle);
+      } catch (_) {}
+      return;
+    }
+    voice.handle = handle;
 
     // A note started mid-pan must inherit the current pan, not play centered.
     if (_panActive) {
@@ -285,6 +299,16 @@ class AudioEngine {
     });
   }
 
+  /// Retires a voice immediately: cancels its envelope and stops its handle, or
+  /// — if the source is still loading — marks it released so [noteOn] stops the
+  /// handle as soon as it resolves.
+  void _retire(_Voice voice) {
+    voice.released = true;
+    voice.decayTimer?.cancel();
+    final SoundHandle? handle = voice.handle;
+    if (handle != null) _hardStopHandle(handle);
+  }
+
   /// Release a note (enters the ADSR release stage, then stops).
   Future<void> noteOff(Note note) async {
     if (!_initialized) return;
@@ -293,23 +317,26 @@ class AudioEngine {
     if (voice == null) return;
     voice.released = true;
     voice.decayTimer?.cancel();
-    // Redistribute headroom now that a voice has been released.
-    _recomputePolyComp();
+
+    final SoundHandle? handle = voice.handle;
+    // Still loading: noteOn sees `released` and stops the handle on arrival.
+    if (handle == null) return;
 
     final Duration release = _secs(_settings.adsr.release);
     try {
-      _soloud.fadeVolume(voice.handle, 0.0, release);
-      _soloud.scheduleStop(voice.handle, release);
+      _soloud.fadeVolume(handle, 0.0, release);
+      _soloud.scheduleStop(handle, release);
     } catch (_) {
-      await _hardStopHandle(voice.handle);
+      await _hardStopHandle(handle);
     }
   }
 
   /// Immediately silence everything.
   Future<void> allNotesOff() async {
-    final List<int> midis = _voices.keys.toList(growable: false);
-    for (final int midi in midis) {
-      await _hardStop(midi);
+    final List<_Voice> voices = _voices.values.toList(growable: false);
+    _voices.clear();
+    for (final _Voice v in voices) {
+      _retire(v);
     }
   }
 
@@ -327,22 +354,16 @@ class AudioEngine {
   // -- Internals --------------------------------------------------------------
 
   /// Writes the effective global volume: the live (theremin) master when set,
-  /// else the persisted master, scaled by the current polyphony compensation.
+  /// else the persisted master. This is a single, steady output gain — it is
+  /// deliberately *not* modulated by the live voice count, so releasing notes
+  /// never get momentarily boosted (which was audible as a loud tail at the end
+  /// of a gesture) and a busy passage never ducks the whole mix toward silence.
   void _pushGlobalVolume() {
     if (!_initialized) return;
     final double base = (_liveMaster ?? _settings.masterVolume).clamp(0.0, 1.0);
     try {
-      _soloud.setGlobalVolume((base * _polyComp).clamp(0.0, 1.0));
+      _soloud.setGlobalVolume(base);
     } catch (_) {}
-  }
-
-  /// Recomputes polyphony gain compensation from the active voice count and
-  /// re-pushes the global volume. Single notes stay at full level; dense chords
-  /// are pulled back gently so their summed output keeps headroom.
-  void _recomputePolyComp() {
-    final int n = _voices.length;
-    _polyComp = n <= 1 ? 1.0 : 1.0 / (1.0 + _polyCompK * (n - 1));
-    _pushGlobalVolume();
   }
 
   Future<SoundHandle> _playSynth(int midi) async {
@@ -406,14 +427,6 @@ class AudioEngine {
       }
     }
     return best;
-  }
-
-  Future<void> _hardStop(int midi) async {
-    final _Voice? voice = _voices.remove(midi);
-    if (voice == null) return;
-    voice.decayTimer?.cancel();
-    _recomputePolyComp();
-    await _hardStopHandle(voice.handle);
   }
 
   Future<void> _hardStopHandle(SoundHandle handle) async {
