@@ -38,7 +38,10 @@ class _Voice {
 class AudioEngine {
   AudioEngine();
 
-  final SoLoud _soloud = SoLoud.instance;
+  // Resolved lazily (on first use, i.e. [init]) rather than at construction so
+  // the engine can be built without loading the native SoLoud library — e.g. in
+  // unit tests, where the engine is never initialised and every call no-ops.
+  late final SoLoud _soloud = SoLoud.instance;
 
   bool _initialized = false;
   bool get isInitialized => _initialized;
